@@ -160,43 +160,44 @@ function process_args() {
    while getopts "h?A:c:d:m:s:vX" opt; do
       case "$opt" in
       h|\?)
-         display_usage $0
-         ;;
+        display_usage $0
+        ;;
       A) # Enable/Disable AVX512 instructions 
-	 OPT_AVX512=$OPTARG
-	 # Validate input is a 0 or 1
-	 if ! [[ $OPT_AVX512 =~ ^[0-1] ]]; then
-	   echo "Error: Invalid value for '-A'. Requires 0 or 1."
-	   exit 1
-	 fi
-         ;;
+        OPT_AVX512=$OPTARG
+        # Validate input is a 0 or 1
+        if ! [[ $OPT_AVX512 =~ ^[0-1] ]]; then
+          echo "Error: Invalid value for '-A'. Requires 0 or 1."
+          exit 1
+        fi
+        ;;
       c) # Set the CXL NUMA Node ID to test
-	 OPT_CXL_NUMA_NODE=$OPTARG
-	 # Validate input is a numeric value
-	 if ! [[ $OPT_CXL_NUMA_NODE =~ ^[0-9]+$ ]]; then
-           echo "Error: Invalid value for '-c'. Requires an integer value."
-	   exit 1
-         fi
-	 ;;
+        OPT_CXL_NUMA_NODE=$OPTARG
+        # Validate input is a numeric value
+        if ! [[ $OPT_CXL_NUMA_NODE =~ ^[0-9]+$ ]]
+        then
+          echo "Error: Invalid value for '-c'. Requires an integer value."
+          exit 1
+        fi
+	      ;;
       d) # Set the DRAM NUMA Node ID to test
-	 OPT_DRAM_NUMA_NODE=$OPTARG
-	 # Validate input is a numeric value
-	 if ! [[ $OPT_DRAM_NUMA_NODE =~ ^[0-9]+$ ]]; then
-           echo "Error: Invalid value for '-d'. Requires an integer value."
-	   exit 1
-         fi
-	 ;;
+        OPT_DRAM_NUMA_NODE=$OPTARG
+        # Validate input is a numeric value
+	      if ! [[ $OPT_DRAM_NUMA_NODE =~ ^[0-9]+$ ]]; then
+          echo "Error: Invalid value for '-d'. Requires an integer value."
+	        exit 1
+        fi
+	      ;;
       m) # Set the location of the mlc binary 
-	 MLC=$OPTARG
-         ;;
+	      MLC=$OPTARG
+        ;;
       s) # Specify which CPU socket to execute MLC on
-	 socket=$OPTARG
-	 # Validate input is a numeric value
-	 if ! [[ $socket =~ ^[0-9]+$ ]]; then
-           echo "Error: Invalid value for '-s'. Requires an integer value."
-	   exit 1
-         fi
-	 verify_cpu_socket
+        socket=$OPTARG
+        # Validate input is a numeric value
+        if ! [[ $socket =~ ^[0-9]+$ ]]; then
+          echo "Error: Invalid value for '-s'. Requires an integer value."
+          exit 1
+        fi
+        verify_cpu_socket
          ;;
       v) # Each -v should increase OPT_VERBOSITY level
          OPT_VERBOSITY=$(($OPT_VERBOSITY+1))
@@ -205,9 +206,9 @@ function process_args() {
          OPT_X=true
          ;;
       *) # Invalid argument
-	 display_usage $0
-	 exit 1
-	 ;;
+        display_usage $0
+        exit 1
+        ;;
       esac
    done
 
@@ -217,6 +218,7 @@ function process_args() {
    fi
 
    # Ensure the user provided the -c and -d options
+   # TODO: Allow the user to use -c OR -d if we only want to test one NUMA node
    if [[ $OPT_CXL_NUMA_NODE -eq -1 ]] || [[ $OPT_DRAM_NUMA_NODE -eq -1 ]]; then
      echo "Error! You must provide both the '-c' and '-d' arguments with values"
      exit 1
@@ -456,6 +458,7 @@ function idle_latency() {
 # W12 = 4 reads and 1 write
 
 # Arg0: DRAM or CXL NUMA Node to test
+# TODO: If '-X' was specified, use all CPU threads, otherwise use the first thread on each core in ${CPU_RANGE}
 function bandwidth() {
    echo ""
    echo "--- Bandwidth Tests ---"
@@ -495,6 +498,105 @@ function bandwidth() {
    rm tmp_bw_testfile
 }
 
+# Collect bandwidth and latency stats for a given NUMA node using a ramp of CPUs used for the test
+# arg0/$1 = NUMA Node to test
+function bandwidth_ramp() {
+  local MEM_NUMA_NODE=$1
+  if [[ "${OPT_DRAM_NUMA_NODE}" -eq "${MEM_NUMA_NODE}" ]]
+  then
+    # Testing DRAM
+    ratiostr="100:0"
+  else
+    # Testing CXL
+    ratiostr="0:100"
+  fi
+
+  # Output CSV file headings
+  local OutputCSVHeadings="Node,DRAM:CXL Ratio,Num of Cores,IO Pattern,Access Pattern,Latency(ns),Bandwidth(MB/s)"
+  local OUTFILE="${OUTPUT_PATH}/results.bwramp.node${MEM_NUMA_NODE}.{rdwr}.${access}.${ratio}.csv"
+  
+  echo "=== Collecting Memory Node ${MEM_NUMA_NODE} bandwidth using Socket ${socket} ==="
+  for (( c=0; c<=${NumOfCoresPerSocket}-1; c=c+${IncCPU} ))
+  do
+    # Build the input file
+    for rdwr in R
+    do
+      # Random bandwidth option is supported only for R, W2, W5 and W6 traffic types
+      for access in seq rand
+      do
+        # TODO: Use the CPUs from the user-specified socket
+        echo "0-${c} ${rdwr} ${access} ${BUF_SZ} dram ${MEM_NUMA_NODE}" > mlc_loaded_latency.input
+        #numactl --membind=0 mlc/mlc --peak_injection_bandwidth -k1-${c}
+        ${MLC} --loaded_latency -gmlc_injection.delay -omlc_loaded_latency.input
+        # Save the results to a CSV file
+        # Print headings to the CSV file on first access
+        if [[ ${c} -eq 0 ]]
+        then
+          echo ${OutputCSVHeadings} > "${OUTFILE}"
+        fi
+        # Extract the Latency and Bandwidth results from the log file
+        LatencyResult=$(tail -n 4 "${LOG_FILE}" | grep '00000' | awk '{print $2}')
+        BandwidthResult=$(tail -n 4 "${LOG_FILE}" | grep '00000' | awk '{print $3}')
+        echo "DRAM:CXL,${ratiostr},${c},${rdwr},${access},${LatencyResult},${BandwidthResult}" >> "${OUTFILE}"
+      done
+    done
+  done
+}
+
+# Collect DRAM + CXL Interleaved workloads
+function bandwidth_ramp_interleave() {
+  # Output CSV file headings
+  local OutputCSVHeadings="Node,DRAM:CXL Ratio,Num of Cores,IO Pattern,Access Pattern,Latency(ns),Bandwidth(MB/s)"
+  local OUTFILE="${OUTPUT_PATH}/results.${rdwr}.${access}.${ratio}.csv"
+
+  echo "=== Collecting DRAM + CXL interleaved stats using Socket ${socket} with Memory Nodes DRAM:${OPT_DRAM_NUMA_NODE}, CXL:${OPT_CXL_NUMA_NODE} ==="
+  for (( c=0; c<=${NumOfCoresPerSocket}-1; c=c+${IncCPU} ))
+  do
+    # Build the input file
+    # File format:
+    # CPU RdWr Access Buf_Sz Node0 Node 1 Ratio
+    # 0-2 W21 seq 40000 dram 0 dram 1 25
+    #
+    # W21 : 100% reads (similar to –R)
+    # W23 : 3 reads and 1 write (similar to –W3)
+    # W27 : 2 reads and 1 non-temporal write (similar to –W7)
+    for rdwr in W21 W23 W27 
+    do
+      # Random bandwidth option is supported only for R, W2, W5 and W6 traffic types
+      for access in seq 
+      do
+        for ratio in 10 25 50
+        do 
+          # Ratio 50 is only supported by W21
+          if [[ ("${rdwr}" == "W23" || "${rdwr}" == "W27") && ${ratio} -eq 50 ]]
+          then
+            continue
+          fi
+
+          # Print headings to the CSV file on first access
+          if [[ ${c} -eq 0 ]]
+          then
+            echo ${OutputCSVHeadings} > "${OUTFILE}"
+          fi
+
+          # Generate the input file for MLC
+          # TODO: Use the CPUs from the user-specified socket
+          echo "0-${c} ${rdwr} ${access} ${BUF_SZ} dram ${OPT_DRAM_NUMA_NODE} dram ${OPT_CXL_NUMA_NODE} ${ratio}" > mlc_loaded_latency.input
+
+          # Run MLC
+          ${MLC} --loaded_latency -gmlc_injection.delay -omlc_loaded_latency.input
+
+          # Extract the Latency and Bandwidth results
+          LatencyResult=$(tail -n 4 "${LOG_FILE}" | grep '00000' | awk '{print $2}')
+          BandwidthResult=$(tail -n 4 "${LOG_FILE}" | grep '00000' | awk '{print $3}')
+          echo "DRAM+CXL,${ratio},${c},${rdwr},${access},${LatencyResult},${BandwidthResult}" >> "${OUTFILE}"
+        done 
+      done
+    done
+  done
+}
+
+
 #################################################################################################
 # Main 
 #################################################################################################
@@ -527,13 +629,6 @@ check_cpus
 get_cpu_range_per_socket
 verify_hyperthreading
 validate_config
-
-# Execute tests
-idle_latency ${OPT_DRAM_NUMA_NODE}
-idle_latency ${OPT_CXL_NUMA_NODE}
-
-bandwidth ${OPT_DRAM_NUMA_NODE}
-bandwidth ${OPT_CXL_NUMA_NODE}
 
 # Get the number of CPU Sockets within the platform
 NumOfSockets=$(lscpu | grep "Socket(s)" | awk -F: '{print $2}' | xargs)
@@ -575,88 +670,23 @@ then
   echo 0 > mlc_injection.delay
 fi
 
-# Output CSV file headings
-OutputCSVHeadings="Node,DRAM:CXL Ratio,Num of Cores,IO Pattern,Access Pattern,Latency(ns),Bandwidth(MB/s)"
+# Execute tests
+# TODO: Log the date/time when each test starts
+# TODO: Support a quiet mode that only displays the test and result, and excludes the "Thread id CXX, traffic pattern P, ..."
+idle_latency ${OPT_DRAM_NUMA_NODE}
+idle_latency ${OPT_CXL_NUMA_NODE}
 
-# Collect DRAM only stats 
-# DRAM:CXL ratio is zero (0)
-ratio=0
-echo "=== Collecting Local DRAM stats for Socket 0 ==="
-for (( c=0; c<=${NumOfCoresPerSocket}-1; c=c+${IncCPU} ))
-do
-  # Build the input file
-  for rdwr in R
-  # for rdwr in R W2 W5 
-  do
-    # Random bandwidth option is supported only for R, W2, W5 and W6 traffic types
-    for access in seq rand
-      do
-        echo "0-${c} ${rdwr} ${access} ${BUF_SZ} dram ${OPT_DRAM_NUMA_NODE}" > mlc_loaded_latency.input
-        #numactl --membind=0 mlc/mlc --peak_injection_bandwidth -k1-${c}
-        ${MLC} --loaded_latency -gmlc_injection.delay -omlc_loaded_latency.input
-	# Save the results to a CSV file
-	# Print headings to the CSV file on first access
-	if [[ ${c} -eq 0 ]]
-	then
-	  echo ${OutputCSVHeadings} > "${OUTPUT_PATH}/results.${rdwr}.${access}.${ratio}.csv"
-	fi
-	# Extract the Latency and Bandwidth results from the log file
-	LatencyResult=$(tail -n 4 "${LOG_FILE}" | grep '00000' | awk '{print $2}')
-	BandwidthResult=$(tail -n 4 "${LOG_FILE}" | grep '00000' | awk '{print $3}')
-	echo "DRAM-Only,100:0,${c},${rdwr},${access},${LatencyResult},${BandwidthResult}" >> "${OUTPUT_PATH}/results.${rdwr}.${access}.${ratio}.csv"
-      done
-  done
-done
+bandwidth ${OPT_DRAM_NUMA_NODE}
+bandwidth ${OPT_CXL_NUMA_NODE}
 
-# Collect DRAM + CXL Interleaved workloads
-echo "=== Collecting Local DRAM stats for Socket 0 ==="
-for (( c=0; c<=${NumOfCoresPerSocket}-1; c=c+${IncCPU} ))
-do
-  # Build the input file
-  # File format:
-  # CPU RdWr Access Buf_Sz Node0 Node 1 Ratio
-  # 0-2 W21 seq 40000 dram 0 dram 1 25
-  #
-  # W21 : 100% reads (similar to –R)
-  # W23 : 3 reads and 1 write (similar to –W3)
-  # W27 : 2 reads and 1 non-temporal write (similar to –W7)
-  for rdwr in W21 W23 W27 
-  do
-    # Random bandwidth option is supported only for R, W2, W5 and W6 traffic types
-    for access in seq 
-    do
-      for ratio in 10 25 50
-      do 
-        # Ratio 50 is only supported by W21
-	if [[ ("${rdwr}" == "W23" || "${rdwr}" == "W27") && ${ratio} -eq 50 ]]
-        then
-          continue
-	fi
+bandwidth_ramp ${OPT_DRAM_NUMA_NODE}
+bandwidth_ramp ${OPT_CXL_NUMA_NODE}
 
-	# Print headings to the CSV file on first access
-        if [[ ${c} -eq 0 ]]
-        then
-          echo ${OutputCSVHeadings} > "${OUTPUT_PATH}/results.${rdwr}.${access}.${ratio}.csv"
-        fi
+bandwidth_ramp_interleave
 
-	# Generate the input file for MLC
-        echo "0-${c} ${rdwr} ${access} ${BUF_SZ} dram ${OPT_DRAM_NUMA_NODE} dram ${OPT_CXL_NUMA_NODE} ${ratio}" > mlc_loaded_latency.input
+# TODO: Generate charts using the CSV files
 
-	# Run MLC
-        ${MLC} --loaded_latency -gmlc_injection.delay -omlc_loaded_latency.input
-
-	# Extract the Latency and Bandwidth results
-	LatencyResult=$(tail -n 4 "${LOG_FILE}" | grep '00000' | awk '{print $2}')
-        BandwidthResult=$(tail -n 4 "${LOG_FILE}" | grep '00000' | awk '{print $3}')
-        echo "DRAM+CXL,${ratio},${c},${rdwr},${access},${LatencyResult},${BandwidthResult}" >> "${OUTPUT_PATH}/results.${rdwr}.${access}.${ratio}.csv"
-      done 
-    done
-  done
-done
-
-# Zip the output directory
-# TODO
+# TODO: Zip the output directory
 
 # Display the end header information
 display_end_info
-
