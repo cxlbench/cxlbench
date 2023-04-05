@@ -15,37 +15,44 @@ VERSION="0.1.0"					# version string
 SCRIPT_NAME=${0##*/}				# Name of this script
 SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]:-$0}"; )" &> /dev/null && pwd 2> /dev/null; )"	# Provides the full directory name of the script no matter where it is being called from
 
-OUTPUT_PATH="./${SCRIPT_NAME}.`hostname`.`date +"%m%d-%H%M"`" # output directory created by this script
+OUTPUT_PATH="./${SCRIPT_NAME}.$(hostname).$(date +"%m%d-%H%M")" # output directory created by this script
 STDOUT_LOG_FILE="${SCRIPT_NAME}.log"			# Filename to save STDOUT and STDERR
 
-NDCTL=("$(command -v ndctl)")                   # Path to ndctl, use -n option to specify location of the ndctl binary
-CXLCLI=("$(command -v cxl)")			# Path to cxl, use -c option to specify the location of the cxl binary
-BC=("$(command -v bc)")				# Path to bc
+CXLCLI=("$(command -v cxl)")			  # Path to cxl, use -c option to specify the location of the cxl binary
 NUMACTL=("$(command -v numactl)")		# Path to numactl
-LSCPU=("$(command -v lscpu)")                   # Path to lscpu
-AWK=("$(command -v awk)")                       # Path to awk
-GREP=("$(command -v grep)")			# Path to grep
-SED=("$(command -v sed)")			# Path to sed
-TPUT=("$(command -v tput)")			# Path to tput
-CP=("$(command -v cp)")				# Path to cp
-FIND=("$(command -v find)")                     # Path to find
-TEE=("$(command -v tee)")                       # Path to tee
-TAIL=("$(command -v tail)")                     # Path to tail
-MLC=("$(command -v mlc)")                       # Path to Intel MLC
+LSCPU=("$(command -v lscpu)")       # Path to lscpu
+AWK=("$(command -v awk)")           # Path to awk
+GREP=("$(command -v grep)")			    # Path to grep
+SED=("$(command -v sed)")			      # Path to sed
+TPUT=("$(command -v tput)")			    # Path to tput
+CP=("$(command -v cp)")				      # Path to cp
+FIND=("$(command -v find)")         # Path to find
+TEE=("$(command -v tee)")           # Path to tee
+TAIL=("$(command -v tail)")         # Path to tail
+MLC=("$(command -v mlc)")           # Path to Intel MLC
 
 # Command line arguments
-socket=0					# default, -s argument to specify the CPU socket to run MLC
-OPT_AVX512=1					# default, -a option to override
-OPT_VERBOSITY=0					# default, -v, -vv, -vvv option to increase verbose output
+socket=0					            # default, -s argument to specify the CPU socket to run MLC
+OPT_VERBOSITY=0					      # default, -v, -vv, -vvv option to increase verbose output
 OPT_LOADED_LATENCY=false			# default, -l to override and perform loaded latency testing
-OPT_X=false					# default, -X to override and use all cpu threads on all cores
-OPT_CXL_NUMA_NODE=-1				# default, -c to override and use the user specified NUMA Node backed by CXL
-OPT_DRAM_NUMA_NODE=-1				# default, -d to override and use the user specified NUMA Node backed by DRAM
+OPT_X=""  					          # default, -X to override and use all cpu threads on all cores
+OPT_Z="-Z"  					        # default, -Z to override and AVX-512 64-byte load/store instructions
+OPT_CXL_NUMA_NODE=-1				  # default, -c to override and use the user specified NUMA Node backed by CXL
+OPT_DRAM_NUMA_NODE=-1				  # default, -d to override and use the user specified NUMA Node backed by DRAM
 
 # MLC Options
-SAMPLE_TIME=30                                  # default, -t argument to MLC
+SAMPLE_TIME=30                # default, -t argument to MLC
+BUF_SZ=40000					        # MLC Buffer Size
 
-BUF_SZ=40000					# MLC Buffer Size
+# Global Variables
+NUMA_NODES_IN_SYSTEM=0        # Number of NUMA Nodes in the host
+NUM_CXL_DEVICES=0             # Number of CXL endpoint Devices in the host
+SOCKETS_IN_SYSTEM=0           # Number of CPU Sockets in the host
+CORES_PER_SOCKET=0            # Number of CPU Cores per Socket
+THREADS_PER_CORE=0            # Number of CPU Threads per Core
+CPU_HYPERTHREADING=false      # CPU Hyperthreading Enabled (Ture) or Disabled (false)
+IncCPU=2                      # If Hyperthreading is Enabled and '-X' is not used, then use only one thread of each core
+
 
 #################################################################################################
 # Helper Functions
@@ -95,7 +102,7 @@ function verify_cmds() {
      MLC_VER=${TOKENS[5]}
      echo "MLC version: $MLC_VER"
    fi
-   if [ ${OPT_AVX512} == 1 ]; then
+   if [ ${OPT_Z} == 1 ]; then
      echo "Using MLC AVX512: Yes"
    else
      echo "Using MLC AVX512: No"
@@ -124,12 +131,6 @@ function display_usage() {
    echo "Run with root privilege (MLC needs it)"
    echo " "
    echo "Optional args:"
-   echo "   -A <Specify whether to enable or disable the AVX_512 option>"
-   echo "      Values:"
-   echo "        0: AVX_512 Option Disabled"
-   echo "        1: AVX_512 Option Enabled - Default"
-   echo "      By default, the AVX_512 option is enabled. If the non-AVX512"
-   echo "      version of MLC is being used, this option shall be set to 0"
    echo " "
    echo "   -c <CXL NUMA Node>"
    echo "      Required. Specify the NUMA Node backed by CXL for testing"
@@ -150,6 +151,13 @@ function display_usage() {
    echo "   -X"
    echo "      For bandwidth tests, mlc will use all cpu threads on each Hyperthread enabled core."
    echo "      Use this option to use only one thread on the core"
+   echo " "
+   echo "   -Z <Specify whether to enable or disable the AVX_512 option>"
+   echo "      Values:"
+   echo "        0: AVX_512 Option Disabled"
+   echo "        1: AVX_512 Option Enabled - Default"
+   echo "      By default, the AVX_512 option is enabled. If the non-AVX512"
+   echo "      version of MLC is being used, this option shall be set to 0"
    exit 0
 }
 
@@ -157,18 +165,10 @@ function display_usage() {
 function process_args() {
 
    # Process the command arguments and options
-   while getopts "h?A:c:d:m:s:vX" opt; do
+   while getopts "h?c:d:m:s:vXZ:" opt; do
       case "$opt" in
       h|\?)
-        display_usage $0
-        ;;
-      A) # Enable/Disable AVX512 instructions 
-        OPT_AVX512=$OPTARG
-        # Validate input is a 0 or 1
-        if ! [[ $OPT_AVX512 =~ ^[0-1] ]]; then
-          echo "Error: Invalid value for '-A'. Requires 0 or 1."
-          exit 1
-        fi
+        display_usage "$0"
         ;;
       c) # Set the CXL NUMA Node ID to test
         OPT_CXL_NUMA_NODE=$OPTARG
@@ -200,13 +200,28 @@ function process_args() {
         verify_cpu_socket
          ;;
       v) # Each -v should increase OPT_VERBOSITY level
-         OPT_VERBOSITY=$(($OPT_VERBOSITY+1))
+         OPT_VERBOSITY=$((OPT_VERBOSITY+1))
          ;;
       X) # Use all CPU threads on all cores
-         OPT_X=true
+         OPT_X="-X"
+         IncCPU=1
          ;;
+      Z) # Enable/Disable AVX512 instructions 
+        OPT_Z=$OPTARG
+        # Validate input is a 0 or 1
+        if ! [[ $OPT_Z =~ ^[0-1] ]]; then
+          echo "Error: Invalid value for '-Z'. Requires 0 or 1."
+          exit 1
+        fi
+        case $OPT_Z in
+          0) OPT_Z=""
+            ;;
+          1) OPT_Z="-Z"
+            ;;
+        esac
+        ;;    
       *) # Invalid argument
-        display_usage $0
+        display_usage "$0"
         exit 1
         ;;
       esac
@@ -227,8 +242,8 @@ function process_args() {
 
 # Create output directory
 function init_outputs() {
-   rm -rf $OUTPUT_PATH 2> /dev/null
-   mkdir $OUTPUT_PATH
+   rm -rf "${OUTPUT_PATH}" 2> /dev/null
+   mkdir "${OUTPUT_PATH}"
 }
 
 # Save STDOUT and STDERR to a log file
@@ -258,18 +273,18 @@ function validate_config() {
   err_state=false # Used for error reporting
 
   # Confirm the system has at least two NUMA nodes. Exit if we find only one(1)
-  NumOfNUMANodes=$(lscpu | grep "NUMA node(s)" | awk -F: '{print $2}' | xargs)
-  if [[ "${NumOfNUMANodes}" -lt 2 ]]
+  NUMA_NODES_IN_SYSTEM=$(lscpu | ${GREP} "NUMA node(s)" | awk -F: '{print $2}' | xargs)
+  if [[ "${NUMA_NODES_IN_SYSTEM}" -lt 2 ]]
   then
     echo "[Error] Only one NUMA Node found. A minumum of two(2) NUMA Nodes is required. Exiting!"
     err_state=true
     exit 1
   fi
-  echo "INFO: Number of NUMA Node(s): ${NumOfNUMANodes}"
+  echo "INFO: Number of NUMA Node(s): ${NUMA_NODES_IN_SYSTEM}"
 
   # Confirm the system has at least one CXL device.
-  NumOfCXLDevices=$(lspci | grep CXL | wc -l)
-  if [[ "${NumOfCXLDevices}" -lt 1 ]]
+  NUM_CXL_DEVICES=$(lspci | ${GREP} -c "CXL")
+  if [[ "${NUM_CXL_DEVICES}" -lt 1 ]]
   then
     echo "[Error] No CXL devices found! A minimum of one CXL device is required. Exiting"
     err_state=true
@@ -287,7 +302,7 @@ function check_cpus() {
    echo "CPU cores per socket: $CPUS"
 
    # One CPU used to measure latency, so the rest can be for bandwidth generation
-   BW_CPUS=$(($CPUS-1))
+   BW_CPUS=$((CPUS-1))
 }
 
 # Verify the user supplied socket number is valid on this system
@@ -297,8 +312,8 @@ function verify_cpu_socket() {
      echo "ERROR: verify_cpu_socket: Could not identify the number of sockets in this system. Exiting."
      exit 1
    fi
-   if (( $socket >= $SOCKETS_IN_SYSTEM )); then
-      echo "ERROR: Socket ${socket} does not exist in this system. Valid sockets are 0-$(( ${SOCKETS_IN_SYSTEM} - 1 )). Exiting."
+   if (( socket >= $SOCKETS_IN_SYSTEM )); then
+      echo "ERROR: Socket ${socket} does not exist in this system. Valid sockets are 0-$(( SOCKETS_IN_SYSTEM - 1 )). Exiting."
       exit 1
    fi
 }
@@ -311,27 +326,39 @@ function verify_numa_node() {
     echo "ERROR: verify_numa_node: Could not identify the number of NUMA nodes in this system. Exiting."
     exit 1
   fi
-  if (( $OPT_CXL_NUMA_NODE >= $NUMA_NODES_IN_SYSTEM-1 )) || 
-     (( $OPT_CXL_NUMA_NODE -lt 0 )); then 
+  if [[ OPT_CXL_NUMA_NODE -ge NUMA_NODES_IN_SYSTEM-1 ]] || 
+     [[ OPT_CXL_NUMA_NODE -lt 0 ]]; then 
     echo "ERROR: CXL NUMA Node ${OPT_CXL_NUMA_NODE} does not exist in this system. Exiting"
   fi
-  if (( $OPT_DRAM_NUMA_NODE >= $NUMA_NODES_IN_SYSTEM-1 )) ||
-     (( $OPT_DRAM_NUMA_NODE -lt 0)); then
+  if [[ OPT_DRAM_NUMA_NODE -ge NUMA_NODES_IN_SYSTEM-1 ]] ||
+     [[ OPT_DRAM_NUMA_NODE -lt 0 ]]; then
     echo "ERROR: DRAM NUMA Node ${OPT_DRAM_NUMA_NODE} does not exist in this system. Exiting"
   fi
 }
 
 # Verify if CPU Hyperthreading is enabled or disabled
-function verify_hyperthreading() {
+function check_hyperthreading_enabled() {
    THREADS_PER_CORE=$( lscpu | ${GREP} "Thread(s) per core" | cut -f2 -d ":")
-   if [ ${THREADS_PER_CORE} -gt 1 ]; then
+   if [ "${THREADS_PER_CORE}" -gt 1 ]; then
      CPU_HYPERTHREADING=true
    else
      CPU_HYPERTHREADING=false
    fi
-   if [ ${OPT_VERBOSITY} -ge 3 ]; then
-     echo "DEBUG: verify_hyperthreading: CPU Hyperthreading = ${CPU_HYPERTHREADING}"
+   if [ "${OPT_VERBOSITY}" -ge 3 ]; then
+     echo "DEBUG: check_hyperthreading_enabled: CPU Hyperthreading = ${CPU_HYPERTHREADING}"
    fi
+}
+
+function get_cpu_socket_count(){
+  # Get the number of CPU Sockets within the platform
+  SOCKETS_IN_SYSTEM=$(lscpu | ${GREP} "Socket(s)" | awk -F: '{print $2}' | xargs)
+  echo "INFO: Number of Physcial Sockets: ${SOCKETS_IN_SYSTEM}"
+}
+
+function get_cores_per_socket_count() {
+  # Get the number of cores per CPU Socket within the platform
+  CORES_PER_SOCKET=$(lscpu | ${GREP} "Core(s) per socket:" | awk -F: '{print $2}' | xargs)
+  echo "INFO: Number of Cores per Socke: ${CORES_PER_SOCKET}"
 }
 
 # Identify the CPU IDs per socket.
@@ -379,39 +406,72 @@ function get_cpu_threads_per_core() {
    fi
 }
 
+# Get the first vCPU on each socket
+# Return the result in a global associative array
+function get_first_vcpu_per_socket() {
+  declare -a first_vcpu_on_socket
+
+  for ((s=0; s<=$((SOCKETS_IN_SYSTEM-1)); s++))
+  do
+    first_vcpu=$(cat /sys/devices/system/node/node${s}/cpulist | cut -f1 -d"-")
+    if [ -z "${first_vcpu}" ]; then
+      echo "ERROR: Cannot determine the first vCPU on socket ${s}. Exiting."
+      #exit 1
+    fi
+    first_vcpu_on_socket[${s}]=${first_vcpu}
+    echo "First CPU on Socket ${s}: ${first_vcpu}"
+  done
+}
+
 #################################################################################################
 # Metric measuring functions
 #################################################################################################
 
+# Run the latency matrix test where the latency from CPU 'C' to memory node 'M' is tested
 function latency_matrix() {
-   # Hugepages need to be allocated using /proc/sys/vm/nr_hugepages 
-   # Without large pages, the latencies are not accurate
-   # We need at least 500 2M pages per numa node
-   # Execute the following and re-run
-   # echo 4000 > /proc/sys/vm/nr_hugepages
-   echo ""
-   echo "--- Latency Matrix Tests ---"
-   nr_hugepages=$(cat /proc/sys/vm/nr_hugepages)
-   echo "Detected ${nr_hugepages} Huge pages."
-   if [[ ${nr_hugepages} -lt 4000 ]]
-   then
-     echo -n "The latency matrix requires a minimum of 4000 hugepages for accuracy. Creating them..."
-     if echo 4000 > /proc/sys/vm/nr_hugepages
-     then
-       # Creating huge pages was successful 
-       echo "Successful"
-     else
-       # Creating huge pages failed
-       echo "Failed!"
-       return -1
-     fi  
-   fi 
+  # Hugepages need to be allocated using /proc/sys/vm/nr_hugepages 
+  # Without large pages, the latencies are not accurate
+  # We need at least 500 2M pages per numa node
+  echo ""
+  echo "--- Latency Matrix Tests ---"
+  local nr_hugepages=$(cat /proc/sys/vm/nr_hugepages)
+  echo "Detected ${nr_hugepages} Huge pages."
 
-   # Run the test
-   ${MLC} --latency_matrix > "${OUTPUT_PATH}/latency_matrix.txt"
+  # Calculate how many large pages we need
+  local nr_huge_pages_needed=$(( NUMA_NODES_IN_SYSTEM * 501 ))
 
-   # Restore the original nr_hugepages value
-   echo "${nr_hugepages}" > /proc/sys/vm/nr_hugepages
+  if [[ nr_hugepages -lt nr_huge_pages_needed ]]
+  then
+    echo -n "The latency matrix test requires a minimum of ${nr_huge_pages_needed} hugepages for accuracy..."
+    if echo "${nr_huge_pages_needed}" > /proc/sys/vm/nr_hugepages
+    then
+      # Creating huge pages was successful 
+      echo " Huge Pages Created Successfuly"
+    else
+      # Creating huge pages failed
+      echo " Creation of Huge Pages Failed!"
+
+      # Restore the original nr_hugepages value
+      echo "${nr_hugepages}" > /proc/sys/vm/nr_hugepages
+      return 1
+    fi  
+  fi 
+
+  # Run the test
+  ${MLC} --latency_matrix ${OPT_X} > "${OUTPUT_PATH}/latency_matrix.txt"
+  # Display the results
+  awk '$1 ~ /^[0-9]+$/ || $1 == "numa"' "${OUTPUT_PATH}/latency_matrix.txt"
+
+  # Restore the original nr_hugepages value
+  echo -n "Restoring original huge page config..."
+  if echo "${nr_hugepages}" > /proc/sys/vm/nr_hugepages
+  then
+    # Restoring original values was successful
+    echo " Success"
+  else
+    # Restoring failed
+    echo " Failed"
+  fi
 }
 
 # Run idle latency test against a specified NUMA node (DRAM or CXL)
@@ -424,11 +484,11 @@ function idle_latency() {
    echo "Using CPU ${FIRST_CPU_ON_SOCKET}"
    echo "Using NUMA Node $1"
    echo -n "Idle sequential latency: "
-   $MLC --idle_latency -c${FIRST_CPU_ON_SOCKET} -j$1 > $OUTPUT_PATH/idle_latency_seq_numa_node_$1.txt
+   ${MLC} --idle_latency -c"${FIRST_CPU_ON_SOCKET}" -j$1 ${OPT_X} > "$OUTPUT_PATH/idle_latency_seq_numa_node_$1.txt"
    ${GREP} "Each iteration took" $OUTPUT_PATH/idle_latency_seq_numa_node_$1.txt
 
    echo -n "Idle random latency: "
-   $MLC --idle_latency -c${FIRST_CPU_ON_SOCKET} -l256 -j$1 -r > $OUTPUT_PATH/idle_latency_rand_numa_node_$1.txt
+   ${MLC} --idle_latency -c"${FIRST_CPU_ON_SOCKET}" -l256 -j"$1" -r ${OPT_X} > "$OUTPUT_PATH/idle_latency_rand_numa_node_$1.txt"
    ${GREP} "Each iteration took" $OUTPUT_PATH/idle_latency_rand_numa_node_$1.txt
    echo "--- End ---"
 }
@@ -483,14 +543,14 @@ function bandwidth() {
       TOK=( $LN )
       echo ${TOK[0]} ${TOK[1]} ${TOK[2]} ${TOK[3]} ${TOK[4]} ${TOK[5]} > tmp_bw_testfile
       echo -n "Memory bandwidth for ${TOK[6]} (MiB/sec): "
-      if [ ${OPT_AVX512} == 1 ]; then
+      if [ ${OPT_Z} == 1 ]; then
         if [ ${TOK[1]} == "W7" ]; then
           Z="-Z"
         else
           Z=""
         fi
       fi
-      ${NUMACTL} -N ${socket} ${MLC} --loaded_latency -d0 -otmp_bw_testfile -t${SAMPLE_TIME} -T ${Z} > ${OUTPUT_PATH}/${TOK[6]}
+      ${NUMACTL} -N ${socket} ${MLC} --loaded_latency -d0 -otmp_bw_testfile -t${SAMPLE_TIME} -T ${OPT_Z} ${OPT_X} > ${OUTPUT_PATH}/${TOK[6]}
       cat ${OUTPUT_PATH}/${TOK[6]} | ${SED} -n -e '/==========================/,$p' | tail -n+2 | ${AWK} '{print $3}'
       sleep 3
    done
@@ -516,7 +576,7 @@ function bandwidth_ramp() {
   local OUTFILE="${OUTPUT_PATH}/results.bwramp.node${MEM_NUMA_NODE}.{rdwr}.${access}.${ratio}.csv"
   
   echo "=== Collecting Memory Node ${MEM_NUMA_NODE} bandwidth using Socket ${socket} ==="
-  for (( c=0; c<=${NumOfCoresPerSocket}-1; c=c+${IncCPU} ))
+  for (( c=0; c<=${CORES_PER_SOCKET}-1; c=c+${IncCPU} ))
   do
     # Build the input file
     for rdwr in R
@@ -524,19 +584,18 @@ function bandwidth_ramp() {
       # Random bandwidth option is supported only for R, W2, W5 and W6 traffic types
       for access in seq rand
       do
-        # TODO: Use the CPUs from the user-specified socket
-        echo "0-${c} ${rdwr} ${access} ${BUF_SZ} dram ${MEM_NUMA_NODE}" > mlc_loaded_latency.input
+        echo "${FIRST_CPU_ON_SOCKET}-${c} ${rdwr} ${access} ${BUF_SZ} dram ${MEM_NUMA_NODE}" > mlc_loaded_latency.input
         #numactl --membind=0 mlc/mlc --peak_injection_bandwidth -k1-${c}
-        ${MLC} --loaded_latency -gmlc_injection.delay -omlc_loaded_latency.input
+        ${MLC} --loaded_latency -gmlc_injection.delay -omlc_loaded_latency.input ${OPT_X}
         # Save the results to a CSV file
         # Print headings to the CSV file on first access
         if [[ ${c} -eq 0 ]]
         then
-          echo ${OutputCSVHeadings} > "${OUTFILE}"
+          echo "${OutputCSVHeadings}" > "${OUTFILE}"
         fi
         # Extract the Latency and Bandwidth results from the log file
-        LatencyResult=$(tail -n 4 "${LOG_FILE}" | grep '00000' | awk '{print $2}')
-        BandwidthResult=$(tail -n 4 "${LOG_FILE}" | grep '00000' | awk '{print $3}')
+        LatencyResult=$(tail -n 4 "${LOG_FILE}" | ${GREP} '00000' | awk '{print $2}')
+        BandwidthResult=$(tail -n 4 "${LOG_FILE}" | ${GREP} '00000' | awk '{print $3}')
         echo "DRAM:CXL,${ratiostr},${c},${rdwr},${access},${LatencyResult},${BandwidthResult}" >> "${OUTFILE}"
       done
     done
@@ -550,7 +609,7 @@ function bandwidth_ramp_interleave() {
   local OUTFILE="${OUTPUT_PATH}/results.${rdwr}.${access}.${ratio}.csv"
 
   echo "=== Collecting DRAM + CXL interleaved stats using Socket ${socket} with Memory Nodes DRAM:${OPT_DRAM_NUMA_NODE}, CXL:${OPT_CXL_NUMA_NODE} ==="
-  for (( c=0; c<=${NumOfCoresPerSocket}-1; c=c+${IncCPU} ))
+  for (( c=0; c<=${CORES_PER_SOCKET}-1; c=c+${IncCPU} ))
   do
     # Build the input file
     # File format:
@@ -576,19 +635,18 @@ function bandwidth_ramp_interleave() {
           # Print headings to the CSV file on first access
           if [[ ${c} -eq 0 ]]
           then
-            echo ${OutputCSVHeadings} > "${OUTFILE}"
+            echo "${OutputCSVHeadings}" > "${OUTFILE}"
           fi
 
           # Generate the input file for MLC
-          # TODO: Use the CPUs from the user-specified socket
-          echo "0-${c} ${rdwr} ${access} ${BUF_SZ} dram ${OPT_DRAM_NUMA_NODE} dram ${OPT_CXL_NUMA_NODE} ${ratio}" > mlc_loaded_latency.input
+          echo "${FIRST_CPU_ON_SOCKET}-${c} ${rdwr} ${access} ${BUF_SZ} dram ${OPT_DRAM_NUMA_NODE} dram ${OPT_CXL_NUMA_NODE} ${ratio}" > mlc_loaded_latency.input
 
           # Run MLC
           ${MLC} --loaded_latency -gmlc_injection.delay -omlc_loaded_latency.input
 
           # Extract the Latency and Bandwidth results
-          LatencyResult=$(tail -n 4 "${LOG_FILE}" | grep '00000' | awk '{print $2}')
-          BandwidthResult=$(tail -n 4 "${LOG_FILE}" | grep '00000' | awk '{print $3}')
+          LatencyResult=$(tail -n 4 "${LOG_FILE}" | ${GREP} '00000' | awk '{print $2}')
+          BandwidthResult=$(tail -n 4 "${LOG_FILE}" | ${GREP} '00000' | awk '{print $3}')
           echo "DRAM+CXL,${ratio},${c},${rdwr},${access},${LatencyResult},${BandwidthResult}" >> "${OUTFILE}"
         done 
       done
@@ -626,44 +684,15 @@ log_stdout_stderr "${OUTPUT_PATH}"
 display_start_info
 
 check_cpus
+get_cpu_socket_count
+get_cores_per_socket_count
 get_cpu_range_per_socket
-verify_hyperthreading
+get_first_vcpu_per_socket
+check_hyperthreading_enabled
 validate_config
 
-# Get the number of CPU Sockets within the platform
-NumOfSockets=$(lscpu | grep "Socket(s)" | awk -F: '{print $2}' | xargs)
-echo "INFO: Number of Physcial Sockets: ${NumOfSockets}"
-
-# Get the number of cores per CPU Socket within the platform
-NumOfCoresPerSocket=$(lscpu | grep "Core(s) per socket:" | awk -F: '{print $2}' | xargs)
-echo "INFO: Number of Cores per Socke: ${NumOfCoresPerSocket}"
-
-# Get the first vCPU on each socket
-declare -a first_vcpu_on_socket
-
-for ((s=0; s<=$((NumOfSockets-1)); s++))
-do
-  first_vcpu=$(cat /sys/devices/system/node/node${s}/cpulist | cut -f1 -d"-")
-  if [ -z "${first_vcpu}" ]; then
-    echo "ERROR: Cannot determine the first vCPU on socket ${s}. Exiting."
-    #exit 1
-  fi
-  first_vcpu_on_socket[${s}]=${first_vcpu}
-  echo "First CPU on Socket ${s}: ${first_vcpu}"
-done
-
-# Confirm if Hyperthreading is Enabled or Disabled
-SMTStatus=$(cat /sys/devices/system/cpu/smt/active)
-if [[ ${SMTStatus} -eq 0 ]]
-then
-  echo "INFO: Hyperthreading is DISABLED"
-  IncCPU=1
-else
-  echo "INFO: Hyperthreading is ENABLED"
-  IncCPU=2
-fi
-
 # Create the MLC Loaded Latency input file if needed
+# The default is to have zero (0) delay between operations. 
 if [[ ! -f mlc_injection.delay ]]
 then
   echo "Creating 'mlc_injection.delay'"
@@ -673,14 +702,16 @@ fi
 # Execute tests
 # TODO: Log the date/time when each test starts
 # TODO: Support a quiet mode that only displays the test and result, and excludes the "Thread id CXX, traffic pattern P, ..."
-idle_latency ${OPT_DRAM_NUMA_NODE}
-idle_latency ${OPT_CXL_NUMA_NODE}
+latency_matrix
 
-bandwidth ${OPT_DRAM_NUMA_NODE}
-bandwidth ${OPT_CXL_NUMA_NODE}
+idle_latency "${OPT_DRAM_NUMA_NODE}"
+idle_latency "${OPT_CXL_NUMA_NODE}"
 
-bandwidth_ramp ${OPT_DRAM_NUMA_NODE}
-bandwidth_ramp ${OPT_CXL_NUMA_NODE}
+bandwidth "${OPT_DRAM_NUMA_NODE}"
+bandwidth "${OPT_CXL_NUMA_NODE}"
+
+bandwidth_ramp "${OPT_DRAM_NUMA_NODE}"
+bandwidth_ramp "${OPT_CXL_NUMA_NODE}"
 
 bandwidth_ramp_interleave
 
