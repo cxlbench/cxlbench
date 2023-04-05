@@ -14,12 +14,6 @@ Runs bandwidth and latency tests on DRAM and CXL Type 3 Memory using Intel MLC
 Run with root privilege (MLC needs it)
  
 Optional args:
-   -A <Specify whether to enable or disable the AVX_512 option>
-      Values:
-        0: AVX_512 Option Disabled
-        1: AVX_512 Option Enabled - Default
-      By default, the AVX_512 option is enabled. If the non-AVX512
-      version of MLC is being used, this option shall be set to 0
  
    -c <CXL NUMA Node>
       Required. Specify the NUMA Node backed by CXL for testing
@@ -40,4 +34,11 @@ Optional args:
    -X
       For bandwidth tests, mlc will use all cpu threads on each Hyperthread enabled core.
       Use this option to use only one thread on the core
+ 
+   -Z <Specify whether to enable or disable the AVX_512 option>
+      Values:
+        0: AVX_512 Option Disabled
+        1: AVX_512 Option Enabled - Default
+      By default, the AVX_512 option is enabled. If the non-AVX512
+      version of MLC is being used, this option shall be set to 0
 ```
