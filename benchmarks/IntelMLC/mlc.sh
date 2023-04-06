@@ -83,7 +83,7 @@ function display_end_info() {
   echo "======================================================================="
   echo "${SCRIPT_NAME} Completed"
   echo "Ended: $(date --date @${END_TIME})"
-  echo "Duration: ${TEST_DURATION} seconds"
+  print_time "${TEST_DURATION}" "Duration:"
   echo "Results: ${OUTPUT_PATH}"
   echo "Logfile: ${LOG_FILE}"
   echo "======================================================================="
@@ -423,6 +423,53 @@ function get_first_vcpu_per_socket() {
   done
 }
 
+# Convert seconds to days, hours, minutes, and seconds
+# Only print the days, hours, and mins if they are non-zero
+# Input: arg1 = time in seconds (int), arg2 (optional) = String prefix, e.g. "Duration"
+# Output: Prints a string with the conversion
+function print_time() {
+    local seconds=$1
+    local prefix_str=$2
+    local days=$((seconds / 86400))
+    local hours=$((seconds / 3600 % 24))
+    local minutes=$((seconds / 60 % 60))
+    local seconds=$((seconds % 60))
+
+    if [[ ! -z "${prefix_str}" ]]; then
+      printf '%s ' $prefix_str
+    fi
+
+    if [[ $days -gt 0 ]]; then
+      if [[ $days -eq 1 ]]; then
+        printf '%d day ' $days
+      elif [[ $days -gt 1 ]]; then
+        printf '%d days ' $days
+      fi
+    fi
+
+    if [[ $hours -gt 0 ]]; then
+      if [[ $hours -eq 1 ]]; then
+        printf '%d hour ' $hours
+      elif [[ $hours -gt 1 ]]; then
+        printf '%d hours ' $hours
+      fi
+    fi
+
+    if [[ $minutes -gt 0 ]];then
+      if [[ $minutes -eq 1 ]]; then
+        printf '%d minute ' $minutes
+      elif [[ $minutes -gt 1 ]]; then
+        printf '%d minutes ' $minutes
+      fi
+    fi
+
+    if [[ $seconds -eq 1 ]]; then
+        printf '%d second\n' $seconds
+    else
+        printf '%d seconds\n' $seconds
+    fi
+}
+
 #################################################################################################
 # Metric measuring functions
 #################################################################################################
@@ -558,7 +605,7 @@ function bandwidth() {
    rm tmp_bw_testfile
 }
 
-# Collect bandwidth and latency stats for a given NUMA node using a ramp of CPUs used for the test
+# Collect bandwidth and latency stats for a single NUMA node using a ramp of CPUs used for the test
 # arg0/$1 = NUMA Node to test
 function bandwidth_ramp() {
   local MEM_NUMA_NODE=$1
@@ -573,7 +620,6 @@ function bandwidth_ramp() {
 
   # Output CSV file headings
   local OutputCSVHeadings="Node,DRAM:CXL Ratio,Num of Cores,IO Pattern,Access Pattern,Latency(ns),Bandwidth(MB/s)"
-  local OUTFILE="${OUTPUT_PATH}/results.bwramp.node${MEM_NUMA_NODE}.{rdwr}.${access}.${ratio}.csv"
   
   echo "=== Collecting Memory Node ${MEM_NUMA_NODE} bandwidth using Socket ${socket} ==="
   for (( c=0; c<=${CORES_PER_SOCKET}-1; c=c+${IncCPU} ))
@@ -591,24 +637,28 @@ function bandwidth_ramp() {
         # Print headings to the CSV file on first access
         if [[ ${c} -eq 0 ]]
         then
-          echo "${OutputCSVHeadings}" > "${OUTFILE}"
+          echo "${OutputCSVHeadings}" > "${OUTPUT_PATH}/bw_ramp.results.node_${MEM_NUMA_NODE}.${rdwr}.${access}.${ratio}.csv"
         fi
         # Extract the Latency and Bandwidth results from the log file
         LatencyResult=$(tail -n 4 "${LOG_FILE}" | ${GREP} '00000' | awk '{print $2}')
         BandwidthResult=$(tail -n 4 "${LOG_FILE}" | ${GREP} '00000' | awk '{print $3}')
-        echo "DRAM:CXL,${ratiostr},${c},${rdwr},${access},${LatencyResult},${BandwidthResult}" >> "${OUTFILE}"
+        echo "DRAM:CXL,${ratiostr},${c},${rdwr},${access},${LatencyResult},${BandwidthResult}" >> "${OUTPUT_PATH}/bw_ramp.results.node_${MEM_NUMA_NODE}.${rdwr}.${access}.${ratio}.csv"
       done
     done
   done
 }
 
 # Collect DRAM + CXL Interleaved workloads
+# arg0/$1 = DRAM NUMA Node
+# arg1/$2 = CXL NUMA Node
 function bandwidth_ramp_interleave() {
+  local DRAM_NUMA_NODE=$1
+  local CXL_NUMA_NODE=$2
+
   # Output CSV file headings
   local OutputCSVHeadings="Node,DRAM:CXL Ratio,Num of Cores,IO Pattern,Access Pattern,Latency(ns),Bandwidth(MB/s)"
-  local OUTFILE="${OUTPUT_PATH}/results.${rdwr}.${access}.${ratio}.csv"
 
-  echo "=== Collecting DRAM + CXL interleaved stats using Socket ${socket} with Memory Nodes DRAM:${OPT_DRAM_NUMA_NODE}, CXL:${OPT_CXL_NUMA_NODE} ==="
+  echo "=== Collecting DRAM + CXL interleaved stats using Socket ${socket} with Memory Nodes DRAM:${DRAM_NUMA_NODE}, CXL:${CXL_NUMA_NODE} ==="
   for (( c=0; c<=${CORES_PER_SOCKET}-1; c=c+${IncCPU} ))
   do
     # Build the input file
@@ -635,11 +685,11 @@ function bandwidth_ramp_interleave() {
           # Print headings to the CSV file on first access
           if [[ ${c} -eq 0 ]]
           then
-            echo "${OutputCSVHeadings}" > "${OUTFILE}"
+            echo "${OutputCSVHeadings}" > "${OUTPUT_PATH}/bw_ramp_interleave.results.node_${DRAM_NUMA_NODE}.node_${CXL_NUMA_NODE}.${rdwr}.${access}.${ratio}.csv"
           fi
 
           # Generate the input file for MLC
-          echo "${FIRST_CPU_ON_SOCKET}-${c} ${rdwr} ${access} ${BUF_SZ} dram ${OPT_DRAM_NUMA_NODE} dram ${OPT_CXL_NUMA_NODE} ${ratio}" > mlc_loaded_latency.input
+          echo "${FIRST_CPU_ON_SOCKET}-${c} ${rdwr} ${access} ${BUF_SZ} dram ${DRAM_NUMA_NODE} dram ${CXL_NUMA_NODE} ${ratio}" > mlc_loaded_latency.input
 
           # Run MLC
           ${MLC} --loaded_latency -gmlc_injection.delay -omlc_loaded_latency.input
@@ -647,11 +697,16 @@ function bandwidth_ramp_interleave() {
           # Extract the Latency and Bandwidth results
           LatencyResult=$(tail -n 4 "${LOG_FILE}" | ${GREP} '00000' | awk '{print $2}')
           BandwidthResult=$(tail -n 4 "${LOG_FILE}" | ${GREP} '00000' | awk '{print $3}')
-          echo "DRAM+CXL,${ratio},${c},${rdwr},${access},${LatencyResult},${BandwidthResult}" >> "${OUTFILE}"
+          echo "DRAM+CXL,${ratio},${c},${rdwr},${access},${LatencyResult},${BandwidthResult}" >> "${OUTPUT_PATH}/bw_ramp_interleave.results.node_${DRAM_NUMA_NODE}.node_${CXL_NUMA_NODE}.${rdwr}.${access}.${ratio}.csv"
         done 
       done
     done
   done
+}
+
+# Remove all temporary files created for this test
+function cleanup() {
+  rm -f mlc_injection.delay mlc_loaded_latency.input tmp_bw_testfile
 }
 
 
@@ -713,7 +768,7 @@ bandwidth "${OPT_CXL_NUMA_NODE}"
 bandwidth_ramp "${OPT_DRAM_NUMA_NODE}"
 bandwidth_ramp "${OPT_CXL_NUMA_NODE}"
 
-bandwidth_ramp_interleave
+bandwidth_ramp_interleave "${OPT_DRAM_NUMA_NODE}" "${OPT_CXL_NUMA_NODE}"
 
 # TODO: Generate charts using the CSV files
 
@@ -721,3 +776,6 @@ bandwidth_ramp_interleave
 
 # Display the end header information
 display_end_info
+
+# Cleanup
+cleanup
