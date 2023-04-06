@@ -609,7 +609,7 @@ function bandwidth() {
 # arg0/$1 = NUMA Node to test
 function bandwidth_ramp() {
   local MEM_NUMA_NODE=$1
-  if [[ "${OPT_DRAM_NUMA_NODE}" -eq "${MEM_NUMA_NODE}" ]]
+  if [[ ${OPT_DRAM_NUMA_NODE} -eq ${MEM_NUMA_NODE} ]]
   then
     # Testing DRAM
     ratiostr="100:0"
@@ -619,7 +619,7 @@ function bandwidth_ramp() {
   fi
 
   # Output CSV file headings
-  local OutputCSVHeadings="Node,DRAM:CXL Ratio,Num of Cores,IO Pattern,Access Pattern,Latency(ns),Bandwidth(MB/s)"
+  local OutputCSVHeadings="Node,DRAM:CXL Ratio,NUMA Node Tested,Num of Cores,IO Pattern,Access Pattern,Latency(ns),Bandwidth(MB/s)"
   
   echo "=== Collecting Memory Node ${MEM_NUMA_NODE} bandwidth using Socket ${socket} ==="
   for (( c=0; c<=${CORES_PER_SOCKET}-1; c=c+${IncCPU} ))
@@ -637,12 +637,12 @@ function bandwidth_ramp() {
         # Print headings to the CSV file on first access
         if [[ ${c} -eq 0 ]]
         then
-          echo "${OutputCSVHeadings}" > "${OUTPUT_PATH}/bw_ramp.results.node_${MEM_NUMA_NODE}.${rdwr}.${access}.${ratio}.csv"
+          echo "${OutputCSVHeadings}" > "${OUTPUT_PATH}/bw_ramp.results.node_${MEM_NUMA_NODE}.${rdwr}.${access}.${ratiostr}.csv"
         fi
         # Extract the Latency and Bandwidth results from the log file
         LatencyResult=$(tail -n 4 "${LOG_FILE}" | ${GREP} '00000' | awk '{print $2}')
         BandwidthResult=$(tail -n 4 "${LOG_FILE}" | ${GREP} '00000' | awk '{print $3}')
-        echo "DRAM:CXL,${ratiostr},${c},${rdwr},${access},${LatencyResult},${BandwidthResult}" >> "${OUTPUT_PATH}/bw_ramp.results.node_${MEM_NUMA_NODE}.${rdwr}.${access}.${ratio}.csv"
+        echo "DRAM:CXL,${ratiostr},${MEM_NUMA_NODE},${c},${rdwr},${access},${LatencyResult},${BandwidthResult}" >> "${OUTPUT_PATH}/bw_ramp.results.node_${MEM_NUMA_NODE}.${rdwr}.${access}.${ratiostr}.csv"
       done
     done
   done
@@ -654,6 +654,7 @@ function bandwidth_ramp() {
 function bandwidth_ramp_interleave() {
   local DRAM_NUMA_NODE=$1
   local CXL_NUMA_NODE=$2
+  local ratiostr="0:0"
 
   # Output CSV file headings
   local OutputCSVHeadings="Node,DRAM:CXL Ratio,Num of Cores,IO Pattern,Access Pattern,Latency(ns),Bandwidth(MB/s)"
@@ -697,7 +698,8 @@ function bandwidth_ramp_interleave() {
           # Extract the Latency and Bandwidth results
           LatencyResult=$(tail -n 4 "${LOG_FILE}" | ${GREP} '00000' | awk '{print $2}')
           BandwidthResult=$(tail -n 4 "${LOG_FILE}" | ${GREP} '00000' | awk '{print $3}')
-          echo "DRAM+CXL,${ratio},${c},${rdwr},${access},${LatencyResult},${BandwidthResult}" >> "${OUTPUT_PATH}/bw_ramp_interleave.results.node_${DRAM_NUMA_NODE}.node_${CXL_NUMA_NODE}.${rdwr}.${access}.${ratio}.csv"
+          ratiostr="$(( 100 - ratio )):${ratio}"
+          echo "DRAM:CXL,${ratiostr},${c},${rdwr},${access},${LatencyResult},${BandwidthResult}" >> "${OUTPUT_PATH}/bw_ramp_interleave.results.node_${DRAM_NUMA_NODE}.node_${CXL_NUMA_NODE}.${rdwr}.${access}.${ratio}.csv"
         done 
       done
     done
