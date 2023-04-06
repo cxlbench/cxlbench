@@ -52,7 +52,7 @@ CORES_PER_SOCKET=0            # Number of CPU Cores per Socket
 THREADS_PER_CORE=0            # Number of CPU Threads per Core
 CPU_HYPERTHREADING=false      # CPU Hyperthreading Enabled (Ture) or Disabled (false)
 IncCPU=2                      # If Hyperthreading is Enabled and '-X' is not used, then use only one thread of each core
-
+nr_hugepages=$(cat /proc/sys/vm/nr_hugepages)    # Number of Huge (2MiB) pages in the system. Latency tests require 2MiB pages for accuracy.
 
 #################################################################################################
 # Helper Functions
@@ -470,26 +470,26 @@ function print_time() {
     fi
 }
 
-#################################################################################################
-# Metric measuring functions
-#################################################################################################
-
-# Run the latency matrix test where the latency from CPU 'C' to memory node 'M' is tested
-function latency_matrix() {
+# MLC Latency tests need at least 1000 x 2MiB pages per NUMA Node
+function create_huge_pages() {
   # Hugepages need to be allocated using /proc/sys/vm/nr_hugepages 
   # Without large pages, the latencies are not accurate
-  # We need at least 500 2M pages per numa node
   echo ""
   echo "--- Latency Matrix Tests ---"
-  local nr_hugepages=$(cat /proc/sys/vm/nr_hugepages)
   echo "Detected ${nr_hugepages} Huge pages."
 
   # Calculate how many large pages we need
-  local nr_huge_pages_needed=$(( NUMA_NODES_IN_SYSTEM * 501 ))
+  local nr_huge_pages_needed=$(( NUMA_NODES_IN_SYSTEM * 1001 ))
 
-  if [[ nr_hugepages -lt nr_huge_pages_needed ]]
+  # Intel recommends a minimum of 4000
+  if [[ $nr_huge_pages_needed -lt 4000 ]]
   then
-    echo -n "The latency matrix test requires a minimum of ${nr_huge_pages_needed} hugepages for accuracy..."
+    nr_huge_pages_needed=4000
+  fi
+
+  if [[ $nr_hugepages -lt $nr_huge_pages_needed ]]
+  then
+    echo -n "The latency tests requires a minimum of ${nr_huge_pages_needed} hugepages for accuracy."
     if echo "${nr_huge_pages_needed}" > /proc/sys/vm/nr_hugepages
     then
       # Creating huge pages was successful 
@@ -503,12 +503,11 @@ function latency_matrix() {
       return 1
     fi  
   fi 
+}
 
-  # Run the test
-  ${MLC} --latency_matrix ${OPT_X} > "${OUTPUT_PATH}/latency_matrix.txt"
-  # Display the results
-  awk '$1 ~ /^[0-9]+$/ || $1 == "numa"' "${OUTPUT_PATH}/latency_matrix.txt"
-
+# Restore the original huge page count when we're done testing
+# so we don't cause any issues and leave a clean system
+function restore_huge_page_count() {
   # Restore the original nr_hugepages value
   echo -n "Restoring original huge page config..."
   if echo "${nr_hugepages}" > /proc/sys/vm/nr_hugepages
@@ -519,6 +518,18 @@ function latency_matrix() {
     # Restoring failed
     echo " Failed"
   fi
+}
+
+#################################################################################################
+# Metric measuring functions
+#################################################################################################
+
+# Run the latency matrix test where the latency from CPU 'C' to memory node 'M' is tested
+function latency_matrix() {
+  # Run the test
+  ${MLC} --latency_matrix ${OPT_X} > "${OUTPUT_PATH}/latency_matrix.txt"
+  # Display the results
+  awk '$1 ~ /^[0-9]+$/ || $1 == "numa"' "${OUTPUT_PATH}/latency_matrix.txt"
 }
 
 # Run idle latency test against a specified NUMA node (DRAM or CXL)
@@ -759,10 +770,14 @@ fi
 # Execute tests
 # TODO: Log the date/time when each test starts
 # TODO: Support a quiet mode that only displays the test and result, and excludes the "Thread id CXX, traffic pattern P, ..."
+create_huge_pages
+
 latency_matrix
 
 idle_latency "${OPT_DRAM_NUMA_NODE}"
 idle_latency "${OPT_CXL_NUMA_NODE}"
+
+restore_huge_page_count
 
 bandwidth "${OPT_DRAM_NUMA_NODE}"
 bandwidth "${OPT_CXL_NUMA_NODE}"
