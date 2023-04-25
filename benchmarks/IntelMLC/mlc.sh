@@ -232,10 +232,9 @@ function process_args() {
      OPT_VERBOSITY=3
    fi
 
-   # Ensure the user provided the -c and -d options
-   # TODO: Allow the user to use -c OR -d if we only want to test one NUMA node
-   if [[ $OPT_CXL_NUMA_NODE -eq -1 ]] || [[ $OPT_DRAM_NUMA_NODE -eq -1 ]]; then
-     echo "Error! You must provide both the '-c' and '-d' arguments with values"
+   # Ensure the user provided one of -c or -d options
+   if [[ $OPT_CXL_NUMA_NODE -eq -1 ]] && [[ $OPT_DRAM_NUMA_NODE -eq -1 ]]; then
+     echo "Error! You must provide either the '-c' or '-d' arguments with values"
      exit 1
    fi
 }
@@ -772,20 +771,40 @@ fi
 # TODO: Support a quiet mode that only displays the test and result, and excludes the "Thread id CXX, traffic pattern P, ..."
 create_huge_pages
 
-latency_matrix
+# latency_matrix
+# Test idle_latency if -c or -d were provided
+if [[ $OPT_CXL_NUMA_NODE -ge 0 ]]; then
+  idle_latency "${OPT_CXL_NUMA_NODE}"
+fi
 
-idle_latency "${OPT_DRAM_NUMA_NODE}"
-idle_latency "${OPT_CXL_NUMA_NODE}"
+if [[ $OPT_DRAM_NUMA_NODE -ge 0 ]]; then
+  idle_latency "${OPT_DRAM_NUMA_NODE}"
+fi
 
 restore_huge_page_count
 
-bandwidth "${OPT_DRAM_NUMA_NODE}"
-bandwidth "${OPT_CXL_NUMA_NODE}"
+# Test bandwidth if -c or -d were provided
+if [[ $OPT_CXL_NUMA_NODE -ge 0 ]]; then
+  bandwidth "${OPT_CXL_NUMA_NODE}"
+fi
 
-bandwidth_ramp "${OPT_DRAM_NUMA_NODE}"
-bandwidth_ramp "${OPT_CXL_NUMA_NODE}"
+if [[ $OPT_DRAM_NUMA_NODE -ge 0 ]]; then
+  bandwidth "${OPT_DRAM_NUMA_NODE}"
+fi
 
-bandwidth_ramp_interleave "${OPT_DRAM_NUMA_NODE}" "${OPT_CXL_NUMA_NODE}"
+# Test bandwidth ramp up if -c or -d were provided
+if [[ $OPT_CXL_NUMA_NODE -ge 0 ]]; then
+  bandwidth_ramp "${OPT_CXL_NUMA_NODE}"
+fi
+
+if [[ $OPT_DRAM_NUMA_NODE -ge 0 ]]; then
+  bandwidth_ramp "${OPT_DRAM_NUMA_NODE}"
+fi
+
+# If the user provided a DRAM and CXL node, test interleaving
+if [[ $OPT_CXL_NUMA_NODE -ge 0 ]] && [[ $OPT_DRAM_NUMA_NODE -ge 0 ]]; then
+  bandwidth_ramp_interleave "${OPT_DRAM_NUMA_NODE}" "${OPT_CXL_NUMA_NODE}"
+fi
 
 # TODO: Generate charts using the CSV files
 
