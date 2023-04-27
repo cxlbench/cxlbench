@@ -781,8 +781,6 @@ if [[ $OPT_DRAM_NUMA_NODE -ge 0 ]]; then
   idle_latency "${OPT_DRAM_NUMA_NODE}"
 fi
 
-restore_huge_page_count
-
 # Test bandwidth if -c or -d were provided
 if [[ $OPT_CXL_NUMA_NODE -ge 0 ]]; then
   bandwidth "${OPT_CXL_NUMA_NODE}"
@@ -805,6 +803,8 @@ fi
 if [[ $OPT_CXL_NUMA_NODE -ge 0 ]] && [[ $OPT_DRAM_NUMA_NODE -ge 0 ]]; then
   bandwidth_ramp_interleave "${OPT_DRAM_NUMA_NODE}" "${OPT_CXL_NUMA_NODE}"
 fi
+
+restore_huge_page_count
 
 # TODO: Generate charts using the CSV files
 
