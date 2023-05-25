@@ -10,7 +10,7 @@ pushd $PWD &> /dev/null
 # Global Variables
 #################################################################################################
 
-VERSION="0.1.0"					# version string
+VERSION="0.1.1"					# version string
 
 SCRIPT_NAME=${0##*/}				# Name of this script
 SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]:-$0}"; )" &> /dev/null && pwd 2> /dev/null; )"	# Provides the full directory name of the script no matter where it is being called from
@@ -281,9 +281,9 @@ function validate_config() {
   fi
   echo "INFO: Number of NUMA Node(s): ${NUMA_NODES_IN_SYSTEM}"
 
-  # Confirm the system has at least one CXL device.
+  # if the -c option is specified, confirm the system has at least one CXL device.
   NUM_CXL_DEVICES=$(lspci | ${GREP} -c "CXL")
-  if [[ "${NUM_CXL_DEVICES}" -lt 1 ]]
+  if [[ ${OPT_CXL_NUMA_NODE} -ge 0 ]] && [[ "${NUM_CXL_DEVICES}" -lt 1 ]]
   then
     echo "[Error] No CXL devices found! A minimum of one CXL device is required. Exiting"
     err_state=true
