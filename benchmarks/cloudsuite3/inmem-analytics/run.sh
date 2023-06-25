@@ -6,6 +6,8 @@ fi
 CPUSETS_CPU_NODE=""
 CPUSETS_CPU=""
 CPUSETS_MEM=""
+MAXMEM=""
+MAXSWAP=""
 DMEM="--driver-memory 64g"
 EMEM="--executor-memory 64g"
 CONTAINER="cloudsuite3/in-memory-analytics"
@@ -28,39 +30,16 @@ function display_help {
 	echo "  -a  <0,1,2>    : Enable autonuma mode <1,2>"
 	echo "  -z  <0,1>      : Enable autonuma-demotion"
 	echo "  -t  <integer>  : Tier up <int>MB of data into Node 0"
+	echo "  -x  <int>g     : max memory usage"
+	echo "  -s  <int>g     : max memory+swap usage"
 	exit 0
-}
-
-function start_tiering (){
-	killall -9 mvcompose
-	killall -9 mysynth
-	if [[ -v TIER_CMD1 ]]; then
-		$TIER_CMD1 &
-		tierpid1=$!
-	else
-		echo "No tiering command registered"
-		exit 1
-	fi
-	if [[ -v TIER_CMD2 ]]; then
-		$TIER_CMD2 java $1 $TIER_CMD2_ARGS &
-		tierpid2=$!
-	fi
-	sleep 1
-}
-function stop_tiering (){
-	if [[ -v tierpid1 ]]; then
-		kill -9 $tierpid1;
-	fi
-	if [[ -v tiercmd2 ]]; then
-		kill -9 $tierpid2;
-	fi
 }
 
 function run_setup {
 	systemctl start docker
 }
 
-while getopts "hpc:m:w:d:e:p:o:n:a:z:t:" opt; do
+while getopts "hpc:m:w:d:e:p:o:n:a:z:t:s:x:" opt; do
 	case ${opt} in
 		h)
 			display_help
@@ -131,10 +110,17 @@ while getopts "hpc:m:w:d:e:p:o:n:a:z:t:" opt; do
 		t)
 			if [[ $OPTARG =~ ^[0-9]+$ ]]; then
 				start_tiering $OPTARG
+				TIERING_ENABLED="true"
 			else
 				echo "Error: -c option requires an integer argument."
 				exit 1
 			fi
+			;;
+		s)
+			MAXSWAP="--memory-swap=$OPTARG"
+			;;
+		x)
+			MAXMEM="--memory=$OPTARG"
 			;;
 		\?)
 			echo "Invalid Option: -$OPTARG" 
@@ -153,13 +139,13 @@ mkdir -p results
 run_setup
 
 start_time=$(date +%s%N)
-docker run $PRIVILEGED --ulimit nofile=90000:90000 $CPUSETS_CPU $CPUSETS_MEM --rm --volumes-from data $CONTAINER /data/ml-latest /data/myratings.csv $DMEM $EMEM > results/raw_results.txt
+docker run $PRIVILEGED $MAXMEM $MAXSWAP --ulimit nofile=90000:90000 $CPUSETS_CPU $CPUSETS_MEM --rm --volumes-from data $CONTAINER /data/ml-latest /data/myratings.csv $DMEM $EMEM > results/raw_results.txt
 end_time=$(date +%s%N)
 time_taken=$(echo "scale=9; ($end_time - $start_time)/1000000000" | bc)
 
 echo "in-memory-analytics,\"$NOTE\",$time_taken," `grep time results/raw_results.txt | sed 's/Benchmark execution time: //' | sed 's/ms//'` >> $RESULTS
 
-if [[ -v tierpid1 ]]; then
+if [[ -v TIERING_ENABLED ]]; then
 	stop_tiering
 fi
 
