@@ -488,6 +488,7 @@ function create_mysql_databases()
         else
             error_msg "Failed to drop the '${SysbenchDBName}' database"
             err_state=true
+            break # Exit the loop on error
         fi
 
         if podman exec -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD}" -i mysql${i} mysql -uroot -e "CREATE DATABASE IF NOT EXISTS ${SysbenchDBName};"
@@ -496,6 +497,7 @@ function create_mysql_databases()
         else
             error_msg "Failed to create the '${SysbenchDBName}' database"
             err_state=true
+            break # Exit the loop on error
         fi
         echo "Done"
 
@@ -507,6 +509,7 @@ function create_mysql_databases()
         else
             error_msg "Failed to add the '${SYSBENCH_USER}' user to the '${SYSBENCH_USER} database"
             err_state=true
+            break # Exit the loop on error
         fi
     done
 
