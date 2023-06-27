@@ -472,12 +472,14 @@ function create_mysql_databases()
     # Start the containers
     for i in $(seq 1 ${SCALE});
     do
-        # Wait for the mysql container to start
+        # Confirm the mysql container is running
         info_msg "Verifying the container 'mysql${i}' is still running..."
-        while ! podman inspect -f '{{.State.Running}}' mysql${i}; do
-            sleep 1
-            echo -n "."
-        done
+        if podman inspect -f '{{.State.Running}}' mysql${i}
+        then
+            error_msg "... Container 'mysql${i}' is not running. Check 'podman logs mysql${i}' for more information"
+            err_state=true
+            break # Exit the loop on error
+        fi
 
         # Create the sbtest database
         info_msg "Server: mysql${i}: Creating the '${SysbenchDBName}' database... "
