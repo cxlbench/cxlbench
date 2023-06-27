@@ -1,4 +1,4 @@
-#!/usr/bin/env bash 
+#!/usr/bin/env bash
 
 # This script/library contains common functions
 # used by other scripts and utilities within the
@@ -59,12 +59,40 @@ function display_start_info() {
 
 # Display test end information
 function display_end_info() {
-  END_TIME=$(date +%s)
-  TEST_DURATION=$((${END_TIME}-${START_TIME}))
+  local END_TIME=$(date +%s)
+  local TEST_DURATION=$((${END_TIME}-${START_TIME}))
+
+  # Convert seconds to days, hours, minutes, and seconds.
+  # Only return the days, hours, and minutes if they are non-zero
+
+  local days=$((TEST_DURATION / 86400))
+  local hours=$(( (TEST_DURATION % 86400) / 3600 ))
+  local minutes=$(( (TEST_DURATION % 3600) / 60 ))
+  local seconds=$((TEST_DURATION % 60))
+
+  local result=""
+
+  if (( days > 0 )); then
+    result+="${days} day(s), "
+  fi
+
+  if (( hours > 0 )); then
+    result+="${hours} hour(s), "
+  fi
+
+  if (( minutes > 0 )); then
+    result+="${minutes} minute(s), "
+  fi
+
+  if (( seconds > 0 )); then
+    result+="${seconds} second(s)"
+  fi
+
+
   echo "======================================================================="
   echo "${SCRIPT_NAME} Completed"
   echo "Ended: $(date --date @${END_TIME})"
-  echo "Duration: ${TEST_DURATION} seconds"
+  echo "Duration: ${result}"
   echo "Results: ${OUTPUT_PATH}"
   echo "Logfile: ${LOG_FILE}"
   echo "======================================================================="
