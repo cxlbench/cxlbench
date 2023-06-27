@@ -739,6 +739,32 @@ function cleanup_database()
     fi
 }
 
+# Get the container logs
+# args: none
+# return: 0=success, 1=error
+function get_container_logs() {
+    local err_state=false
+
+    info_msg "Collecting container logs..."
+
+    for i in $(seq 1 ${SCALE});
+    do
+        if podman logs mysql${i} > ${OUTPUT_PATH}/${OUTPUT_PREFIX}_mysql.${i}.log
+        then
+            info_msg "... Container 'mysql${i}' logs successfully written to '${OUTPUT_PATH}/${OUTPUT_PREFIX}_mysql.${i}.log'"
+        else
+            error_msg " ... Failed to collect the container logs for mysql${i}"
+        fi
+
+        if podman logs sysbench${i} > ${OUTPUT_PATH}/${OUTPUT_PREFIX}_mysql.${i}.log
+        then
+            info_msg "... Container 'sysbench${i}' logs successfully written to '${OUTPUT_PATH}/${OUTPUT_PREFIX}_sysbench.${i}.log'"
+        else
+            error_msg " ... Failed to collect the container logs for sysbench${i}"
+        fi
+    done
+}
+
 # Stop the MySQL and Sysbench containers
 # args: none
 # return: 0=success, 1=error
@@ -940,7 +966,7 @@ then
 fi
 
 # Define the array of functions to call in the correct order
-functions=("create_network" "set_numactl_options" "create_sysbench_container_image" "start_sysbench_containers" "start_mysql_containers" "pause_for_stability" "create_mysql_databases" "prepare_the_database" "warm_the_database" "run_the_benchmark" "cleanup_database" "stop_containers" "remove_containers")
+functions=("create_network" "set_numactl_options" "create_sysbench_container_image" "start_sysbench_containers" "start_mysql_containers" "pause_for_stability" "create_mysql_databases" "prepare_the_database" "warm_the_database" "run_the_benchmark" "cleanup_database" "get_container_logs" "stop_containers" "remove_containers")
 
 # Iterate over the array of functions and call them one by one
 # Handle the return value: 0=Success, 1=Failure
