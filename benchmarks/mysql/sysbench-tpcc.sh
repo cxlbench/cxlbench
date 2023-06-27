@@ -990,5 +990,8 @@ done
 # Fatal Errors will jump here without further processing
 #out:#
 
+# Get the container logs
+get_container_logs
+
 # Display the end header information
 display_end_info
