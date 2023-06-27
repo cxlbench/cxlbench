@@ -585,7 +585,7 @@ function warm_the_database()
     for i in $(seq 1 ${SCALE});
     do
         info_msg " .... Warming database on mysql${i} ... "
-        SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/10/" | sed "s/THREADS/4/" | sed "s/RUNTIME/600/" )
+        SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/10/" | sed "s/THREADS/4/" | sed "s/RUNTIME/300/" )
         podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS run" > ${OUTPUT_PATH}/${OUTPUT_PREFIX}_warmup.${i}.log &
         pids[${i}]=$!
     done
@@ -631,7 +631,7 @@ function run_the_benchmark()
     fi
 
     # start the TPC-C Benchmark
-    RUNTIME=60
+    RUNTIME=300
     info_msg "Executing the benchmark run..."
     dstat_find_location_of_db
 
