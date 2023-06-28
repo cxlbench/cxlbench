@@ -30,6 +30,7 @@ CLIENT_CPU_LIMIT=4              # Number of vCPUs to give to the Sysbench contai
 CLIENT_MEMORY_LIMIT=1g          # Amount of memory (GiB) to give to the Sysbench container
 SERVER_CPU_LIMIT=4              # Number of vCPUs to give to the MySQL container
 SERVER_MEMORY_LIMIT=16g         # Amount of memory (GiB) to give to the Sysbench container
+PM_INSTANCES=1                  # Number of podman instances to start
 
 # === MySQL Variables ===
 
@@ -45,7 +46,7 @@ MySQLDockerImgTag="docker.io/library/mysql:latest"      # MySQL Version. Get the
 # Sysbench username and password
 SYSBENCH_USER="sbuser"
 SYSBENCH_USER_PASSWORD="sbuser-pwd" 
-SCALE=1                                     # Default number of warehouses (scale value)
+SCALE=10                                    # Default number of warehouses. Use -s to override
 TABLES=10                                   # Default number of tables per warehouse. Use -t to override.
 SYSBENCH_CONTAINER_IMG_NAME="sysbenchmysql" # Sysbench container image name
 SysbenchDBName="sbtest"                     # Name of the MySQL Database to create and run Sysbench against
@@ -106,16 +107,22 @@ function print_usage()
     echo "      -r                         : Run the Sysbench workload"
     echo "      -p                         : Prepare the database"
     echo "      -M <numa_node,..>          : [Required] Memory NUMA Node to run the MySQLServer"
-    echo "      -o <prefix>                : [Required] prefix of the output files"
-    echo "      -s <scale>                 : Set the database scale value: Default 1"
-    echo "      -S <numa_node>             : [Required] NUMA Node to run the Sysbench clients"
-    echo "      -t <number_of_tables>      : The number of tables to use: Default 10"
+    echo "      -o <prefix>                : [Required] prefix of the output files: Default 'test'"
+    echo "      -s <scale>                 : Number of warehouses (scale): Default 10"
+    echo "      -S <numa_node>             : [Required] NUMA Node to run the Sysbench workers"
+    echo "      -t <number_of_tables>      : The number of tables per warehouse: Default 10"
     echo "      -w                         : Warm the database"
     echo "      -h                         : Print this message"
     echo " "
-    echo "Example 1: Runs a single MySQL server on NUMA 0 and a single SysBench instance on NUMA Node1, prepares the database, runs the benchmark, and removes the database when complete."
+    echo "Example 1: Runs a single MySQL server on NUMA 0 and a single SysBench instance on NUMA Node1, "
+    echo "  prepares the database, runs the benchmark, and removes the database and containers when complete."
     echo " "
     echo "    $ ./${SCRIPT_NAME} -c -C 0 -e dram -i 1 -r -p -M 0 -o test -S1 -t 10 -w"
+    echo " "
+    echo "Example 2: Created the MySQL and Sysbench containers, runs the MySQL container on NUMA Node 0, the "
+    echo "  Sysbench container on NUMA Node 1, then prepares the database and exits. The containers are left running."
+    echo " "
+    echo "    $ ./${SCRIPT_NAME} -C 0 -e dram -M0 -o test -S 1  -p"
     echo " "
 }
 
@@ -309,7 +316,7 @@ function start_mysql_containers()
     local err_state=false
     
     MYSQL_PORT=${MYSQL_START_PORT}
-    for i in $(seq 1 ${SCALE});
+    for i in $(seq 1 ${PM_INSTANCES});
     do
 
         # ========== MYSQL ==========
@@ -394,7 +401,7 @@ function start_sysbench_containers()
 {
     local err_state=false
 
-    for i in $(seq 1 ${SCALE});
+    for i in $(seq 1 ${PM_INSTANCES});
     do
         # ========== SYSBENCH ==========
 
@@ -402,7 +409,7 @@ function start_sysbench_containers()
     
         # Set the host in the SYSBENCH_OPTS
         # Check and see of we need to pass in SYSBENCH_OPTS to this set up
-        SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/10/" | sed "s/THREADS/4/" | sed "s/RUNTIME/60/" )
+        SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/4/" | sed "s/RUNTIME/60/" )
 
         # Create a new Sysbench container if it does not exist
         #   or start a new container if it does exist
@@ -476,7 +483,7 @@ function create_mysql_databases()
     local err_state=false
 
     # Start the containers
-    for i in $(seq 1 ${SCALE});
+    for i in $(seq 1 ${PM_INSTANCES});
     do
         # Confirm the mysql container is running
         info_msg "Verifying the container 'mysql${i}' is still running..."
@@ -544,10 +551,10 @@ function prepare_the_database()
 
     # Prepare the database
     info_msg "Preparing the database(s). This will take some time. Please be patient..."
-    for i in $(seq 1 ${SCALE});
+    for i in $(seq 1 ${PM_INSTANCES});
     do
-        info_msg " .... Preparing database on mysql${i} ..."
-        SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/10/" | sed "s/THREADS/4/" | sed "s/RUNTIME/60/" )
+        info_msg " ... Preparing database on mysql${i} ..."
+        SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/4/" | sed "s/RUNTIME/60/" )
 
         podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS prepare" > ${OUTPUT_PATH}/${OUTPUT_PREFIX}_prepare.${i}.log &
         pids[${i}]=$!
@@ -560,11 +567,10 @@ function prepare_the_database()
     # Check the exit status of the tpcc.lua prepare command
     for pid in "${pids[@]}"; do
         if [ $? -eq 0 ]; then
-            info_msg "Sysbench Prepare for pid '${pid}' was successful"
+            info_msg " ... Sysbench Prepare for pid '${pid}' was successful"
         else
-            error_msg "Sysbench Prepare for pid '${pid}' failed"
+            error_msg " ... Sysbench Prepare for pid '${pid}' failed"
             err_state=true
-            # exit
         fi
     done
 
@@ -593,10 +599,10 @@ function warm_the_database()
     fi
     # Warm the database
     info_msg "Warming the database. This will take some time. Please be patient..."
-    for i in $(seq 1 ${SCALE});
+    for i in $(seq 1 ${PM_INSTANCES});
     do
         info_msg " .... Warming database on mysql${i} ... "
-        SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/10/" | sed "s/THREADS/4/" | sed "s/RUNTIME/300/" )
+        SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/4/" | sed "s/RUNTIME/300/" )
         podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS run" > ${OUTPUT_PATH}/${OUTPUT_PREFIX}_warmup.${i}.log &
         pids[${i}]=$!
     done
@@ -634,6 +640,8 @@ function run_the_benchmark()
 {
     local DSTAT_PID
     local DSTATFILE
+    local PODMAN_STATS_OUTPUT_FILE
+    local PODMAN_STATS_PID
     local err_state=false
 
     if [ -z ${RUN_TEST} ];
@@ -643,6 +651,7 @@ function run_the_benchmark()
 
     # start the TPC-C Benchmark
     RUNTIME=300
+
     info_msg "Executing the benchmark run..."
     dstat_find_location_of_db
 
@@ -652,14 +661,23 @@ function run_the_benchmark()
     do
         info_msg " ... Start run with parameters threads=${threads} runtime=${RUNTIME} tables=${TABLES} ... "
         DSTATFILE=${OUTPUT_PATH}/${OUTPUT_PREFIX}_dstat-${threads}-threads.csv
+        PODMAN_STATS_OUTPUT_FILE=${OUTPUT_PATH}/${OUTPUT_PREFIX}_podman_stats-${threads}-threads.out
+
         # Remove a previous restult file if present
         rm -f ${DSTATFILE}
+        rm -f ${PODMAN_STATS_OUTPUT_FILE}
+
+        # Start the data collection
         dstat -c -m -d -D ${DATADISK} --io --output ${DSTATFILE} > /dev/null &
         DSTAT_PID=$!
-        for i in $(seq 1 ${SCALE});
+
+        podman stats --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}\t{{.BlockIO}}\t{{.PIDs}}" &> ${PODMAN_STATS_OUTPUT_FILE=}
+        PODMAN_STATS_PID=$!
+
+        for i in $(seq 1 ${PM_INSTANCES});
         do
             # Run the benchmark
-            SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/10/" | sed "s/THREADS/${threads}/" | sed "s/RUNTIME/${RUNTIME}/" )
+            SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/${threads}/" | sed "s/RUNTIME/${RUNTIME}/" )
             podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS run" > ${OUTPUT_PATH}/${OUTPUT_PREFIX}_run_${threads}.${i}.log &
             pids[${i}]=$!
         done
@@ -676,8 +694,10 @@ function run_the_benchmark()
                 return 1
             fi
         done
-        # kill -9 ${DSTAT_PID} > /dev/null 2>&1
+
+        # Stop the data collection
         kill ${DSTAT_PID} > /dev/null 2>&1
+        kill ${PODMAN_STATS_PID} > /dev/null 2>&1
 
         # Replace the ${DATADISK} with the term datadisk make parsing and reporting easier
         sed -i 's%${DATADISK}%datadisk%g' ${DSTATFILE} # Use % to avoid clobbering sed syntax checks when mount points have '/' in them. eg: when DATADISK='mapper/fedora_fedora-root'
@@ -710,9 +730,9 @@ function cleanup_database()
     fi
 
     info_msg "Starting cleanup of the MySQL database..."
-    for i in $(seq 1 ${SCALE});
+    for i in $(seq 1 ${PM_INSTANCES});
     do
-        SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/10/" | sed "s/THREADS/4/" | sed "s/RUNTIME/600/" )
+        SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/4/" | sed "s/RUNTIME/600/" )
         podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS cleanup" > ${OUTPUT_PATH}/${OUTPUT_PREFIX}_cleanup.${i}.log &
         # Check for failure here, bail out and clean up
         pids[${i}]=$!
@@ -758,7 +778,7 @@ function get_container_logs() {
 
     info_msg "Collecting container logs..."
 
-    for i in $(seq 1 ${SCALE});
+    for i in $(seq 1 ${PM_INSTANCES});
     do
         if podman logs mysql${i} &> ${OUTPUT_PATH}/${OUTPUT_PREFIX}_mysql.${i}.log
         then
@@ -785,7 +805,7 @@ function stop_containers()
 
     # Stop the container
     info_msg "Stopping the MySQL and SysBench containers..."
-    for i in $(seq 1 ${SCALE});
+    for i in $(seq 1 ${PM_INSTANCES});
     do
         if podman stop mysql${i}
         then
@@ -825,7 +845,7 @@ function remove_containers()
 
     # Remove the containers
     info_msg "Removing the MySQL containers..."
-    for i in $(seq 1 ${SCALE});
+    for i in $(seq 1 ${PM_INSTANCES});
     do
         # The sysbench containers are created on the fly, and are not retained after 
         # the have been killed
@@ -870,7 +890,7 @@ while getopts 'cC:e:hi:M:o:prs:S:t:w' opt; do
             EXPERIMENT=${OPTARG}
             ;;
         i)
-            SCALE=${OPTARG}
+            PM_INSTANCES=${OPTARG}
             ;;
         M)
             MYSQL_MEM_NUMA_NODE=${OPTARG}
@@ -939,8 +959,7 @@ fi
 
 if [ -z ${OUTPUT_PREFIX} ];
 then
-    print_usage
-    exit 1
+    OUTPUT_PREFIX="test"
 fi
 
 # Verify the mandatory commands and utilities are installed. Exit on error.
@@ -997,7 +1016,8 @@ done
 #out:#
 
 # Get the container logs
-get_container_logs
+# TODO: Get the logs on error. The get_container_logs() will collect this data during a normal run.
+# get_container_logs
 
 # Display the end header information
 display_end_info
