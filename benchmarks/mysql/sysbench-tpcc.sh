@@ -671,7 +671,7 @@ function run_the_benchmark()
         dstat -c -m -d -D ${DATADISK} --io --output ${DSTATFILE} > /dev/null &
         DSTAT_PID=$!
 
-        podman stats --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}\t{{.BlockIO}}\t{{.PIDs}}" &> ${PODMAN_STATS_OUTPUT_FILE=}
+        podman stats --no-reset --format "table {{.Name}},{{.ID}},{{.CPUPerc}},{{.MemUsageBytes}},{{.MemPerc}},{{.NetIO}},{{.BlockIO}},{{.PIDS}}" &> ${PODMAN_STATS_OUTPUT_FILE=}
         PODMAN_STATS_PID=$!
 
         for i in $(seq 1 ${PM_INSTANCES});
@@ -687,9 +687,9 @@ function run_the_benchmark()
 
             # Check the exit status of the podman build command
             if [ $? -eq 0 ]; then
-                info_msg "Sysbench Run operation for pid '${pid}' was successful"
+                info_msg " ...... Sysbench Run operation for pid '${pid}' was successful"
             else
-                error_msg "Sysbench Run operation for pid '${pid}' failed"
+                error_msg " ...... Sysbench Run operation for pid '${pid}' failed"
                 err_state=true
                 return 1
             fi
