@@ -306,7 +306,6 @@ EOF
 # return: 0=success, 1=error
 function start_mysql_containers()
 {
-    set -x
     local err_state=false
     
     MYSQL_PORT=${MYSQL_START_PORT}
@@ -362,7 +361,7 @@ function start_mysql_containers()
             then
                 info_msg "Done"
             else
-                error_msg "Container 'mysql${i}' failed to start. Check `podman logs mysq${i}`"
+                error_msg "Container 'mysql${i}' failed to start. Check 'podman logs mysq${i}'"
                 err_state=true
             fi
         else 
@@ -380,8 +379,6 @@ function start_mysql_containers()
         # Increment the MySQL port for the next MySQL instance
         MYSQL_PORT=$(($MYSQL_PORT + 1))
     done
-
-    set +x
 
     if ${err_state}; then
         return 1
@@ -428,7 +425,7 @@ function start_sysbench_containers()
             then
                 info_msg "Done"
             else
-                error_msg "Container 'sysbench${i}' failed to start. Check `podman logs sysbench${i}`"
+                error_msg "Container 'sysbench${i}' failed to start. Check 'podman logs sysbench${i}'"
                 err_state=true
             fi
         else
@@ -483,7 +480,7 @@ function create_mysql_databases()
     do
         # Confirm the mysql container is running
         info_msg "Verifying the container 'mysql${i}' is still running..."
-        if podman inspect -f '{{.State.Running}}' mysql${i}
+        if ! podman inspect -f '{{.State.Running}}' mysql${i}
         then
             error_msg "... Container 'mysql${i}' is not running. Check 'podman logs mysql${i}' for more information"
             err_state=true
@@ -763,14 +760,14 @@ function get_container_logs() {
 
     for i in $(seq 1 ${SCALE});
     do
-        if podman logs mysql${i} > ${OUTPUT_PATH}/${OUTPUT_PREFIX}_mysql.${i}.log
+        if podman logs mysql${i} &> ${OUTPUT_PATH}/${OUTPUT_PREFIX}_mysql.${i}.log
         then
             info_msg "... Container 'mysql${i}' logs successfully written to '${OUTPUT_PATH}/${OUTPUT_PREFIX}_mysql.${i}.log'"
         else
             error_msg " ... Failed to collect the container logs for mysql${i}"
         fi
 
-        if podman logs sysbench${i} > ${OUTPUT_PATH}/${OUTPUT_PREFIX}_sysbench.${i}.log
+        if podman logs sysbench${i} &> ${OUTPUT_PATH}/${OUTPUT_PREFIX}_sysbench.${i}.log
         then
             info_msg "... Container 'sysbench${i}' logs successfully written to '${OUTPUT_PATH}/${OUTPUT_PREFIX}_sysbench.${i}.log'"
         else
