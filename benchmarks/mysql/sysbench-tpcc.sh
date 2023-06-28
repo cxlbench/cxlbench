@@ -301,11 +301,12 @@ EOF
     fi
 }
 
-# Start the containers
+# Create and Start the MySQL containers
 # args: none
 # return: 0=success, 1=error
 function start_mysql_containers()
 {
+    set -x
     local err_state=false
     
     MYSQL_PORT=${MYSQL_START_PORT}
@@ -321,6 +322,12 @@ function start_mysql_containers()
             else
                 error_msg "Failed to create ${MYSQL_DATA_DIR}/mysql${i}"
                 return 1
+            fi
+            
+            # Give all permisions on the data directory
+            if ! chmod 777 ${MYSQL_DATA_DIR}/mysql${i}
+            then
+                error_msg "Failed to 'chmod 777 ${MYSQL_DATA_DIR}/mysql${i}'. The database may not start"
             fi
         else
             info_msg "Directory ${MYSQL_DATA_DIR}/mysql${i} exists"
@@ -373,6 +380,8 @@ function start_mysql_containers()
         # Increment the MySQL port for the next MySQL instance
         MYSQL_PORT=$(($MYSQL_PORT + 1))
     done
+
+    set +x
 
     if ${err_state}; then
         return 1
@@ -761,7 +770,7 @@ function get_container_logs() {
             error_msg " ... Failed to collect the container logs for mysql${i}"
         fi
 
-        if podman logs sysbench${i} > ${OUTPUT_PATH}/${OUTPUT_PREFIX}_mysql.${i}.log
+        if podman logs sysbench${i} > ${OUTPUT_PATH}/${OUTPUT_PREFIX}_sysbench.${i}.log
         then
             info_msg "... Container 'sysbench${i}' logs successfully written to '${OUTPUT_PATH}/${OUTPUT_PREFIX}_sysbench.${i}.log'"
         else
