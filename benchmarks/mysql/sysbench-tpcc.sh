@@ -47,7 +47,9 @@ MySQLDockerImgTag="docker.io/library/mysql:latest"      # MySQL Version. Get the
 SYSBENCH_USER="sbuser"
 SYSBENCH_USER_PASSWORD="sbuser-pwd" 
 SCALE=10                                    # Default number of warehouses. Use -s to override
-TABLES=10                                   # Default number of tables per warehouse. Use -t to override.
+TABLES=10                                   # Default number of tables per warehouse. Use -t to override
+SYSBENCH_WARMTIME=300                       # Duration (seconds) to warm the database before running tests
+SYSBENCH_RUNTIME=300                        # Duration (seconds) for the 'run' operation. Use -T to override
 SYSBENCH_CONTAINER_IMG_NAME="sysbenchmysql" # Sysbench container image name
 SysbenchDBName="sbtest"                     # Name of the MySQL Database to create and run Sysbench against
 # Sysbench options
@@ -111,6 +113,7 @@ function print_usage()
     echo "      -s <scale>                 : Number of warehouses (scale): Default 10"
     echo "      -S <numa_node>             : [Required] NUMA Node to run the Sysbench workers"
     echo "      -t <number_of_tables>      : The number of tables per warehouse: Default 10"
+    echo "      -T <run time>              : Number of seconds to 'run' the benchmark"
     echo "      -w                         : Warm the database"
     echo "      -h                         : Print this message"
     echo " "
@@ -598,11 +601,11 @@ function warm_the_database()
         return 0
     fi
     # Warm the database
-    info_msg "Warming the database. This will take some time. Please be patient..."
+    info_msg "Warming the database. This will take approximately ${SYSBENCH_WARMTIME} seconds. Please be patient..."
     for i in $(seq 1 ${PM_INSTANCES});
     do
         info_msg " .... Warming database on mysql${i} ... "
-        SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/4/" | sed "s/RUNTIME/300/" )
+        SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/4/" | sed "s/RUNTIME/${SYSBENCH_WARMTIME}/" )
         podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS run" > ${OUTPUT_PATH}/${OUTPUT_PREFIX}_warmup.${i}.log &
         pids[${i}]=$!
     done
@@ -650,14 +653,15 @@ function run_the_benchmark()
     fi
 
     # start the TPC-C Benchmark
-    RUNTIME=300
+    # RUNTIME=300
 
     info_msg "Executing the benchmark run..."
     dstat_find_location_of_db
 
     # Initiate ramp up tests that start ever increasing number of clients
     # Be careful not to exceed the CPU resources of the Sysbench container
-    for threads in 1 2 4 8 16 32 64 128 192 250
+    # for threads in 1 2 4 8 16 32 64 128
+    for threads in 1 2 4 8 16 32 64 128 192 256 384 425 500 768 1000
     do
         info_msg " ... Start run with parameters threads=${threads} runtime=${RUNTIME} tables=${TABLES} ... "
         DSTATFILE=${OUTPUT_PATH}/${OUTPUT_PREFIX}_dstat-${threads}-threads.csv
@@ -677,7 +681,7 @@ function run_the_benchmark()
         for i in $(seq 1 ${PM_INSTANCES});
         do
             # Run the benchmark
-            SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/${threads}/" | sed "s/RUNTIME/${RUNTIME}/" )
+            SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/${threads}/" | sed "s/RUNTIME/${SYSBENCH_RUNTIME}/" )
             podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS run" > ${OUTPUT_PATH}/${OUTPUT_PREFIX}_run_${threads}.${i}.log &
             pids[${i}]=$!
         done
@@ -772,10 +776,8 @@ function cleanup_database()
 
 # Get the container logs
 # args: none
-# return: 0=success, 1=error
+# return: 0=success
 function get_container_logs() {
-    local err_state=false
-
     info_msg "Collecting container logs..."
 
     for i in $(seq 1 ${PM_INSTANCES});
@@ -794,6 +796,34 @@ function get_container_logs() {
             error_msg " ... Failed to collect the container logs for sysbench${i}"
         fi
     done
+
+    return 0 # We don't want to stop further processing on error
+}
+
+# Generate a snapshot of the MySQL settings and my.cnf
+# args: none
+# return: 0=success
+function get_mysql_config() {
+    info_msg "Collecting 'my.cnf'"
+
+    # Copy the my.cnf file to the output directory
+    if cp ${MYSQL_CONF} ${OUTPUT_PATH}
+    then
+        info_msg "my.cnf collected successfully"
+    else
+        error_msg "Failed to copy '${MYSQL_CONF}' to '${OUTPUT_PATH}'"
+    fi
+
+    # Dump the MySQL database variables
+    "SHOW GLOBAL VARIABLES;" > ${OUTPUT_PATH}/${OUTPUT_PREFIX}_mysql.settings
+    if podman exec -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD}" -i mysql${i} mysql -uroot -e "SHOW GLOBAL VARIABLES;" > ${OUTPUT_PATH}/mysql_global_variables.out
+    then
+        info_msg "MySQL Global Variables successfully written to '${OUTPUT_PATH}/mysql_global_variables.out'"
+    else
+        error_msg "Failed to acquire the MySQL Global Variables."
+    fi
+
+    return 0 # We don't want to stop further processing on error
 }
 
 # Stop the MySQL and Sysbench containers
@@ -877,7 +907,7 @@ then
 fi
 
 # Process the command line arguments
-while getopts 'cC:e:hi:M:o:prs:S:t:w' opt; do
+while getopts 'cC:e:hi:M:o:prs:S:t:T:w' opt; do
     case "$opt" in
         c)
             CLEANUP=1
@@ -904,14 +934,17 @@ while getopts 'cC:e:hi:M:o:prs:S:t:w' opt; do
         r)
             RUN_TEST=1
             ;;
-        t)
-            TABLES=${OPTARG}
-            ;;
         s)
             SCALE=${OPTARG}
             ;;
         S)
             SYSBENCH_NUMA_NODE=${OPTARG}
+            ;;
+        t)
+            TABLES=${OPTARG}
+            ;;
+        T)
+            SYSBENCH_RUNTIME=${OPTARG}
             ;;
         w)
             WARM_DB=1
@@ -996,7 +1029,7 @@ then
 fi
 
 # Define the array of functions to call in the correct order
-functions=("create_network" "set_numactl_options" "create_sysbench_container_image" "start_sysbench_containers" "start_mysql_containers" "pause_for_stability" "create_mysql_databases" "prepare_the_database" "warm_the_database" "run_the_benchmark" "cleanup_database" "get_container_logs" "stop_containers" "remove_containers")
+functions=("create_network" "set_numactl_options" "create_sysbench_container_image" "start_sysbench_containers" "start_mysql_containers" "pause_for_stability" "create_mysql_databases" "prepare_the_database" "warm_the_database" "run_the_benchmark" "cleanup_database" "get_container_logs" "get_mysql_config" "stop_containers" "remove_containers")
 
 # Iterate over the array of functions and call them one by one
 # Handle the return value: 0=Success, 1=Failure
