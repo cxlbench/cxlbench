@@ -48,11 +48,15 @@ function ctrl_c() {
 }
 
 # Display test start information
+# arg1: The command line arguments passed in by using '$*' from the caller
 function display_start_info() {
   START_TIME=$(date +%s)
   echo "======================================================================="
   echo "Starting ${SCRIPT_NAME}"
   echo "${SCRIPT_NAME} Version ${VERSION}"
+  if [[ -n "$1" ]]; then
+    echo "${SCRIPT_NAME} $1"
+  fi
   echo "Started: $(date --date @${START_TIME})"
   echo "======================================================================="
 }

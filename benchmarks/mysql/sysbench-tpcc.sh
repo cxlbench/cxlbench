@@ -1010,7 +1010,7 @@ auto_detect_terminal_colors
 log_stdout_stderr "${OUTPUT_PATH}"
 
 # Display the header information
-display_start_info
+display_start_info "$*"
 
 # Check if the MySQL data directory on host exists and is writable by this user
 if [ ! -d ${MYSQL_DATA_DIR} ];
