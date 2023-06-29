@@ -815,7 +815,6 @@ function get_mysql_config() {
     fi
 
     # Dump the MySQL database variables
-    "SHOW GLOBAL VARIABLES;" > ${OUTPUT_PATH}/${OUTPUT_PREFIX}_mysql.settings
     if podman exec -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD}" -i mysql${i} mysql -uroot -e "SHOW GLOBAL VARIABLES;" > ${OUTPUT_PATH}/mysql_global_variables.out
     then
         info_msg "MySQL Global Variables successfully written to '${OUTPUT_PATH}/mysql_global_variables.out'"
