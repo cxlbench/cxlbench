@@ -927,6 +927,20 @@ function check_mysql_data_dir() {
     fi
 }
 
+# Check the MYSQL config directory that hosts the my.cnf exists before starting the container(s)
+# args: none
+# return: 0=success, 1=error
+function check_my_cnf_dir_exists() {
+    if [ ! -f ${MYSQL_CONF} ];
+    then
+        error_msg " '${MYSQL_CONF}' does not exist. Please create the mysql configuration file and retry. Exiting"
+        return 1
+    else
+        info_msg "'${MYSQL_CONF}' exists."
+        return 0
+    fi
+}
+
 #################################################################################################
 # Main
 #################################################################################################
@@ -1045,16 +1059,8 @@ log_stdout_stderr "${OUTPUT_PATH}"
 # Display the header information
 display_start_info "$*"
 
-# MYSQL config file
-# Modify this file or create a new config to use
-if [ ! -f ${MYSQL_CONF} ];
-then
-    error_msg " '${MYSQL_CONF}' is not present. Please create the mysql configuration file and retry. Exiting"
-    exit
-fi
-
 # Define the array of functions to call in the correct order
-functions=("check_mysql_data_dir" "check_cgroups" "create_network" "set_numactl_options" "create_sysbench_container_image" "start_sysbench_containers" "start_mysql_containers" "pause_for_stability" "create_mysql_databases" "prepare_the_database" "warm_the_database" "run_the_benchmark" "cleanup_database" "get_container_logs" "get_mysql_config" "stop_containers" "remove_containers")
+functions=("check_mysql_data_dir" "check_cgroups" "create_network" "set_numactl_options" "create_sysbench_container_image" "start_sysbench_containers" "check_my_cnf_dir_exists" "start_mysql_containers" "pause_for_stability" "create_mysql_databases" "prepare_the_database" "warm_the_database" "run_the_benchmark" "cleanup_database" "get_container_logs" "get_mysql_config" "stop_containers" "remove_containers")
 
 # Iterate over the array of functions and call them one by one
 # Handle the return value: 0=Success, 1=Failure
