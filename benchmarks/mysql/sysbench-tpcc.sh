@@ -365,9 +365,9 @@ function start_mysql_containers()
         fi
 
         # Start the MySQL container on specific NUMA node if it's not already running
-        if ! podman ps --format "{{.Names}}" | grep -q mysql${i}; then
+        if ! podman ps --format "{{.Names}}" | grep -q mysql${i} &> /dev/null; then
             info_msg "Starting MySQL container 'mysql${i}'..."
-            if numactl ${NUMACTL_OPTION} podman start mysql${i}
+            if numactl ${NUMACTL_OPTION} podman start mysql${i} &> /dev/null
             then
                 info_msg "Done"
             else
@@ -381,7 +381,7 @@ function start_mysql_containers()
         # Wait for the MySQL container to start
         # TODO: Put a limit, otherwise, this could spin forever.
         info_msg "Waiting for container 'mysql${i}' to start..."
-        while ! podman inspect -f '{{.State.Running}}' mysql${i}; do
+        while ! podman inspect -f '{{.State.Running}}' mysql${i} &> /dev/null; do
             sleep 1
             echo -n "."
         done
@@ -418,7 +418,7 @@ function start_sysbench_containers()
         #   or start a new container if it does exist
         if ! podman ps -a --format "{{.Names}}" | grep -q sysbench${i}; then
             info_msg "Container 'sysbench${i}' doesn't exist. Creating it..."
-            numactl --cpunodebind=${SYSBENCH_NUMA_NODE} --membind=${SYSBENCH_NUMA_NODE} podman run -d --rm --name sysbench${i} --network ${NETWORK_NAME} --cpus=${CLIENT_CPU_LIMIT} --memory=${CLIENT_MEMORY_LIMIT} -e SYSBENCH_OPTS="$SYSBENCH_OPTS" localhost/$SYSBENCH_CONTAINER_IMG_NAME
+            numactl --cpunodebind=${SYSBENCH_NUMA_NODE} --membind=${SYSBENCH_NUMA_NODE} podman run -d --rm --name sysbench${i} --network ${NETWORK_NAME} --cpus=${CLIENT_CPU_LIMIT} --memory=${CLIENT_MEMORY_LIMIT} -e SYSBENCH_OPTS="$SYSBENCH_OPTS" localhost/$SYSBENCH_CONTAINER_IMG_NAME &> /dev/null
             if [ "$?" -ne "0" ];
             then
                 echo ""
@@ -431,7 +431,7 @@ function start_sysbench_containers()
         elif ! podman ps --format "{{.Names}}" | grep -q sysbench${i}; then
             # Container exists, so start it
             info_msg "Starting SysBench container 'sysbench${i}'..."
-            if numactl --cpunodebind=${SYSBENCH_NUMA_NODE} --membind=${SYSBENCH_NUMA_NODE} podman start sysbench${i}
+            if numactl --cpunodebind=${SYSBENCH_NUMA_NODE} --membind=${SYSBENCH_NUMA_NODE} podman start sysbench${i} &> /dev/null
             then
                 info_msg "Done"
             else
@@ -444,11 +444,10 @@ function start_sysbench_containers()
 
         # Wait for the container to start
         info_msg "Waiting for container 'sysbench${i}' to start..."
-        while ! podman inspect -f '{{.State.Running}}' sysbench${i}; do
+        while ! podman inspect -f '{{.State.Running}}' sysbench${i} &> /dev/null; do
             sleep 1
             echo -n "."
         done
-        echo "Done"
 
     done
 
@@ -490,7 +489,7 @@ function create_mysql_databases()
     do
         # Confirm the mysql container is running
         info_msg "Verifying the container 'mysql${i}' is still running..."
-        if ! podman inspect -f '{{.State.Running}}' mysql${i}
+        if ! podman inspect -f '{{.State.Running}}' mysql${i} &> /dev/null
         then
             error_msg "... Container 'mysql${i}' is not running. Check 'podman logs mysql${i}' for more information"
             err_state=true
@@ -500,7 +499,7 @@ function create_mysql_databases()
         # Create the sbtest database
         info_msg "Server: mysql${i}: Creating the '${SysbenchDBName}' database... "
         # Drop the database on the offchance that it has gotten corrupted by a prior run and recreate it
-        if podman exec -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD}" -i mysql${i} mysql -uroot -e "DROP DATABASE IF EXISTS ${SysbenchDBName};"
+        if podman exec -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD}" -i mysql${i} mysql -uroot -e "DROP DATABASE IF EXISTS ${SysbenchDBName};" > /dev/null 2> "${OUTPUT_PATH}/podman_exec_drop_database.err"
         then
             info_msg "Successfully dropped the '${SysbenchDBName}' database"
         else
@@ -509,7 +508,7 @@ function create_mysql_databases()
             break # Exit the loop on error
         fi
 
-        if podman exec -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD}" -i mysql${i} mysql -uroot -e "CREATE DATABASE IF NOT EXISTS ${SysbenchDBName};"
+        if podman exec -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD}" -i mysql${i} mysql -uroot -e "CREATE DATABASE IF NOT EXISTS ${SysbenchDBName};" > /dev/null 2> "${OUTPUT_PATH}/podman_exec_create_database.err" > /dev/null 2> "${OUTPUT_PATH}/podman_exec_create_database.err"
         then
             info_msg "Successfully created the '${SysbenchDBName}' database"
         else
@@ -521,7 +520,7 @@ function create_mysql_databases()
 
         # Create the ${SYSBENCH_USER} user and grant privileges
         info_msg "Server: mysql${i}: Creating the '${SYSBENCH_USER}'... "
-        if podman exec -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD}" -i mysql${i} mysql -uroot -e "CREATE USER IF NOT EXISTS '${SYSBENCH_USER}'@'%' IDENTIFIED WITH mysql_native_password BY '${SYSBENCH_USER_PASSWORD}'; GRANT ALL PRIVILEGES ON ${SysbenchDBName}.* TO '${SYSBENCH_USER}'@'%'; FLUSH PRIVILEGES;"
+        if podman exec -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD}" -i mysql${i} mysql -uroot -e "CREATE USER IF NOT EXISTS '${SYSBENCH_USER}'@'%' IDENTIFIED WITH mysql_native_password BY '${SYSBENCH_USER_PASSWORD}'; GRANT ALL PRIVILEGES ON ${SysbenchDBName}.* TO '${SYSBENCH_USER}'@'%'; FLUSH PRIVILEGES;" > /dev/null 2> "${OUTPUT_PATH}/podman_exec_create_sbtest_user.err"
         then
             info_msg "Successfully added the '${SYSBENCH_USER}' user to the '${SYSBENCH_USER} database"
         else
@@ -559,7 +558,7 @@ function prepare_the_database()
         info_msg " ... Preparing database on mysql${i} ..."
         SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/4/" | sed "s/RUNTIME/60/" )
 
-        podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS prepare" > ${OUTPUT_PATH}/${OUTPUT_PREFIX}_prepare.${i}.log &
+        podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS prepare" &> ${OUTPUT_PATH}/${OUTPUT_PREFIX}_prepare.${i}.log &
         pids[${i}]=$!
     done
 
@@ -679,7 +678,7 @@ function run_the_benchmark()
         do
             # Run the benchmark
             SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/${threads}/" | sed "s/RUNTIME/${SYSBENCH_RUNTIME}/" )
-            podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS run" > ${OUTPUT_PATH}/${OUTPUT_PREFIX}_run_${threads}.${i}.log &
+            podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS run" &> ${OUTPUT_PATH}/${OUTPUT_PREFIX}_run_${threads}.${i}.log &
             pids[${i}]=$!
         done
 
@@ -734,7 +733,7 @@ function cleanup_database()
     for i in $(seq 1 ${PM_INSTANCES});
     do
         SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/4/" | sed "s/RUNTIME/600/" )
-        podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS cleanup" > ${OUTPUT_PATH}/${OUTPUT_PREFIX}_cleanup.${i}.log &
+        podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS cleanup" &> ${OUTPUT_PATH}/${OUTPUT_PREFIX}_cleanup.${i}.log &
         # Check for failure here, bail out and clean up
         pids[${i}]=$!
     done
@@ -850,7 +849,7 @@ function stop_containers()
     info_msg "Stopping the MySQL and SysBench containers..."
     for i in $(seq 1 ${PM_INSTANCES});
     do
-        if podman stop mysql${i}
+        if podman stop mysql${i} &> /dev/null
         then
             info_msg "... Container 'mysql${i}' stopped successfully"
         else
@@ -858,7 +857,7 @@ function stop_containers()
             err_state=true
         fi
 
-        if podman kill sysbench${i}
+        if podman kill sysbench${i} &> /dev/null
         then
             info_msg "... Container 'sysbench${i}' was killed successfully"
         else
@@ -892,7 +891,7 @@ function remove_containers()
     do
         # The sysbench containers are created on the fly, and are not retained after 
         # the have been killed
-        if podman rm mysql${i}
+        if podman rm mysql${i} &> /dev/null
         then
             info_msg "... Container 'mysql${i}' removed successfully"
         else
@@ -917,7 +916,7 @@ function check_cgroups() {
         return 1
     fi
 
-    if ! grep "cpu" /etc/systemd/system/user@.service.d/delegate.conf; then 
+    if ! grep "cpu" /etc/systemd/system/user@.service.d/delegate.conf &> /dev/null; then 
         error_msg  "This user does not have CPU cgroup priviledges! Follow the procedure in the README.md for further instructions. Exiting"
         return 1
     fi
