@@ -891,6 +891,37 @@ function remove_containers()
     fi
 }
 
+# This function will check the user has the necessary permissions in the cgroups configuration
+# args: none
+# return: 0=success, 1=error
+function check_cgroups() {
+    if [[ -f "/etc/systemd/system/user@.service.d/delegate.conf" ]]; then 
+        error_msg "The file '/etc/systemd/system/user@.service.d/delegate.conf' does not exist. Follow the procedure in the README.md for further instructions. Exiting"
+        return 1
+    fi
+
+    if ! grep "cpu" /etc/systemd/system/user@.service.d/delegate.conf; then 
+        error_msg  "This user does not have CPU cgroup priviledges! Follow the procedure in the README.md for further instructions. Exiting"
+        return 1
+    fi
+
+    return 0
+}
+
+# Check if the MySQL data directory on host exists and is writable by this user
+# args: none
+# return: 0=success, 1=error
+function check_mysql_data_dir() {
+    if [ ! -d "${MYSQL_DATA_DIR}" ] && [ -w "${MYSQL_DATA_DIR}" ];
+    then
+        info_msg "${MYSQL_DATA_DIR} exists and is writable by everyone"
+        return 0
+    else
+        error_msg "${MYSQL_DATA_DIR} does not exist or is not writable by everyone. Please create the '${MYSQL_DATA_DIR}' directory and retry. Exiting"
+        return 1
+    fi
+}
+
 #################################################################################################
 # Main
 #################################################################################################
@@ -1009,12 +1040,7 @@ log_stdout_stderr "${OUTPUT_PATH}"
 # Display the header information
 display_start_info "$*"
 
-# Check if the MySQL data directory on host exists and is writable by this user
-if [ ! -d ${MYSQL_DATA_DIR} ];
-then
-    error_msg "${MYSQL_DATA_DIR} is not present. Please create the '${MYSQL_DATA_DIR}' directory and retry. Exiting"
-    exit
-fi
+
 
 # MYSQL config file
 # Modify this file or create a new config to use
@@ -1025,7 +1051,7 @@ then
 fi
 
 # Define the array of functions to call in the correct order
-functions=("create_network" "set_numactl_options" "create_sysbench_container_image" "start_sysbench_containers" "start_mysql_containers" "pause_for_stability" "create_mysql_databases" "prepare_the_database" "warm_the_database" "run_the_benchmark" "cleanup_database" "get_container_logs" "get_mysql_config" "stop_containers" "remove_containers")
+functions=("check_mysql_data_dir" "check_cgroups" "create_network" "set_numactl_options" "create_sysbench_container_image" "start_sysbench_containers" "start_mysql_containers" "pause_for_stability" "create_mysql_databases" "prepare_the_database" "warm_the_database" "run_the_benchmark" "cleanup_database" "get_container_logs" "get_mysql_config" "stop_containers" "remove_containers")
 
 # Iterate over the array of functions and call them one by one
 # Handle the return value: 0=Success, 1=Failure
