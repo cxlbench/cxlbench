@@ -652,16 +652,13 @@ function run_the_benchmark()
         return 0
     fi
 
-    # start the TPC-C Benchmark
-    # RUNTIME=300
-
     info_msg "Executing the benchmark run..."
     dstat_find_location_of_db
 
     # Initiate ramp up tests that start ever increasing number of clients
     # Be careful not to exceed the CPU resources of the Sysbench container
-    # for threads in 1 2 4 8 16 32 64 128
-    for threads in 1 2 4 8 16 32 64 128 192 256 384 425 500 768 1000
+    for threads in 1 2 4 8 16 32 64 128 150
+    # for threads in 1 2 4 8 16 32 64 128 192 256 384 425 500 768 1000
     do
         info_msg " ... Start run with parameters threads=${threads} runtime=${RUNTIME} tables=${TABLES} ... "
         DSTATFILE=${OUTPUT_PATH}/${OUTPUT_PREFIX}_dstat-${threads}-threads.csv
