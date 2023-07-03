@@ -895,7 +895,7 @@ function remove_containers()
 # args: none
 # return: 0=success, 1=error
 function check_cgroups() {
-    if [[ -f "/etc/systemd/system/user@.service.d/delegate.conf" ]]; then 
+    if [[ ! -f "/etc/systemd/system/user@.service.d/delegate.conf" ]]; then 
         error_msg "The file '/etc/systemd/system/user@.service.d/delegate.conf' does not exist. Follow the procedure in the README.md for further instructions. Exiting"
         return 1
     fi
@@ -912,10 +912,15 @@ function check_cgroups() {
 # args: none
 # return: 0=success, 1=error
 function check_mysql_data_dir() {
-    if [ ! -d "${MYSQL_DATA_DIR}" ] && [ -w "${MYSQL_DATA_DIR}" ];
+    if [ -d "${MYSQL_DATA_DIR}" ];
     then
-        info_msg "${MYSQL_DATA_DIR} exists and is writable by everyone"
-        return 0
+        if [ -w "${MYSQL_DATA_DIR}" ]; then
+            info_msg "${MYSQL_DATA_DIR} exists and is writable by everyone"
+            return 0
+        else
+            error_msg "${MYSQL_DATA_DIR} exists but is not writable by everyone. Please run 'sudo chmod 777 ${MYSQL_DATA_DIR}' to resolve this issue."
+            return 1
+        fi
     else
         error_msg "${MYSQL_DATA_DIR} does not exist or is not writable by everyone. Please create the '${MYSQL_DATA_DIR}' directory and retry. Exiting"
         return 1
@@ -1039,8 +1044,6 @@ log_stdout_stderr "${OUTPUT_PATH}"
 
 # Display the header information
 display_start_info "$*"
-
-
 
 # MYSQL config file
 # Modify this file or create a new config to use
