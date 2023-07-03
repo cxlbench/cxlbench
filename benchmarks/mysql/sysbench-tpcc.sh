@@ -811,29 +811,30 @@ function get_mysql_config() {
         error_msg "Failed to copy '${MYSQL_CONF}' to '${OUTPUT_PATH}'"
     fi
 
-    # Dump the MySQL database variables
-    if podman exec -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD}" -i mysql${i} mysql -uroot -e "SHOW GLOBAL VARIABLES;" > ${OUTPUT_PATH}/mysql_global_variables.out
-    then
-        info_msg "MySQL Global Variables successfully written to '${OUTPUT_PATH}/mysql_global_variables.out'"
-    else
-        error_msg "Failed to acquire the MySQL Global Variables."
-    fi
+    for i in $(seq 1 ${PM_INSTANCES});
+    do
+        # Dump the MySQL database variables
+        if podman exec -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD}" -i mysql${i} mysql -uroot -e "SHOW GLOBAL VARIABLES;" &> ${OUTPUT_PATH}/mysql_global_variables.out
+        then
+            info_msg "MySQL Global Variables successfully written to '${OUTPUT_PATH}/mysql_global_variables.out'"
+        else
+            error_msg "Failed to acquire the MySQL Global Variables."
+        fi
 
-    # Gather the total database size including all the tables
-    if podman exec -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD}" -i mysql${i} mysql -uroot -e "SELECT table_schema "Database Name", sum(data_length + index_length) / (1024 * 1024) "Database Size in MB" FROM information_schema.TABLES WHERE table_schema = '${SysbenchDBName}' GROUP BY table_schema;" > ${OUTPUT_PATH}/mysql_dbsize.out
-    then
-        info_msg "MySQL Database size successfully written to '${OUTPUT_PATH}/mysql_dbsize.out'"
-    else
-        error_msg "Failed to acquire the MySQL database size."
-    fi
+        # Gather the total database size including all the tables
+        if podman exec -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD}" -i mysql${i} mysql -uroot -e "SELECT table_schema 'Database Name', sum(data_length + index_length) / (1024 * 1024) 'Database Size in MB' FROM information_schema.TABLES WHERE table_schema = '${SysbenchDBName}' GROUP BY table_schema;" &> ${OUTPUT_PATH}/mysql_dbsize.out
+        then
+            info_msg "MySQL Database size successfully written to '${OUTPUT_PATH}/mysql_dbsize.out'"
+        else
+            error_msg "Failed to acquire the MySQL database size."
+        fi
+    done
 
     # Collect the on-disk size of the MYSQL_DATA_DIR subdirectories
-    if du -h --max-depth=1 "${MYSQL_DATA_DIR}" &> "${OUTPUT_PATH}/du_-h.mysql_data_dir.out"
-    then
-        info_msg "Successfully collected the on-disk size for '${MYSQL_DATA_DIR}'. See '${OUTPUT_PATH}/du_-h.mysql_data_dir.out'."
-    else
-        error_msg "Failed to collect the on-disk size for '${MYSQL_DATA_DIR}'. See '${OUTPUT_PATH}/du_-h.mysql_data_dir.out' for more information."
-    fi
+    # Chances are high that this du command will return 'permission denied' for some of the directories, so 
+    #  we don't need to use the typical logic here, otherwise we mis-represent that data is captured, but other
+    #  errors existed. Instead, redirect STDOUT to the file and STDERR to the error file.
+    du -h --max-depth=1 "${MYSQL_DATA_DIR}" &> "${OUTPUT_PATH}/du_-h.mysql_data_dir.out"
 
     return 0 # We don't want to stop further processing on error
 }
