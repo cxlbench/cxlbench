@@ -3,7 +3,7 @@ This benchmark uses the [Sysbench](https://github.com/akopytov/sysbench/) tool w
 
 The script does not require root priviledges to execute as Podman allows us to run everything as a non-root user. However, there are optional OS tuning that does require root. 
 
-## Usage
+# Usage
 
 ```bash
 sysbench-tpcc.sh: Usage
@@ -32,6 +32,81 @@ Example 2: Created the MySQL and Sysbench containers, runs the MySQL container o
  
     $ ./sysbench-tpcc.sh -C 0 -e dram -M0 -o test -S 1  -p
 ```
+
+## Install Instructions
+
+### Prerequisites
+
+The script requires the following commands and utilities to be installed
+- numactl
+- lscpu
+- lspci
+- grep
+- cut
+- sed
+- awk
+- podman
+
+To install these prerequsites, use:
+
+**Fedora/CentOS/RHEL**
+
+```bash
+$ sudo dnf install numactl sed gawk podman util-linux pciutils
+```
+
+**Ubuntu**
+
+```bash
+$ sudo apt install numactl grep sed gawk podman util-linux pciutils
+```
+
+### MySQL Data Directory
+
+The script expects the MySQL data will be hosted on a file system on the host and a Podman container will allow the container to mount the data directory to perform read/write operations. Each container will have its own data directory within the filesystem. For example, if `MYSQL_DATA_DIR=/data`, the first MySQL container will create and mount `/data/mysql1`. It is important that the data directory on the host is writable by the container. The easiest method is to open permissions using:
+
+```bash
+$ sudo chmod 777 /data
+```
+
+If you prefer to host the data elsewhere, modify the `sysbench-tpcc.sh` script and change the `MYSQL_DATA_DIR` variable.
+
+### CGroup Permissions
+
+The `sysbench-tpcc.sh` script is expected to run as a non-root user. This is why Podman is used to manage the containers. As such, the default security policy for cgroupsv2 commonly does not allow the use of `--cpus` for Podman (or Docker). This can cause containers to fail when starting with the following error:
+
+```
+Error: OCI runtime error: the requested cgroup controller `cpu` is not available
+```
+
+You must add the option for non-root users, using this procedure:
+
+```bash
+// Create the required /etc/systemd/system/user@.service.d/ directory
+
+$ sudo mkdir -p /etc/systemd/system/user@.service.d/
+
+// Create a delegate.conf file with the following content
+$ sudo vim /etc/systemd/system/user@.service.d/delegate.conf
+// Add this content
+[Service]
+Delegate=memory pids cpu cpuset
+
+// Reload the systemd daemons to pick up the new change, or reboot the host
+$ sudo systemctl daemon-reload
+
+// Restart the user.slice systemd service
+$ sudo systemctl restart user.slice
+
+// Check the users permissions
+$ cat "/sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/cgroup.controllers"
+cpuset cpu memory pids
+```
+
+If the above doesn't work the first time, log out of all sessions for that user and login again. Alternatively, reboot the host.
+
+
+#
 
 ## Sysbench Tuning & Configuration
 Most of the common options are exposed via the command line arguments. The default environment downloads and compiles the latest sysbench version using a multi-stage `Dockerfile`. The release version of sysbench does not have the `--warmup` option, so we muct compile it to ascertain this feature. Each sysbench container uses 4 vCPUs and 1GiB of memory. To change this, edit the sysbench-tpcc.sh script and modify the `CLIENT_CPU_LIMIT` and `CLIENT_MEMORY_LIMIT` variables. 
