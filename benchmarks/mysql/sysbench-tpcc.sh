@@ -819,6 +819,22 @@ function get_mysql_config() {
         error_msg "Failed to acquire the MySQL Global Variables."
     fi
 
+    # Gather the total database size including all the tables
+    if podman exec -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD}" -i mysql${i} mysql -uroot -e "SELECT table_schema "Database Name", sum(data_length + index_length) / (1024 * 1024) "Database Size in MB" FROM information_schema.TABLES WHERE table_schema = '${SysbenchDBName}' GROUP BY table_schema;" > ${OUTPUT_PATH}/mysql_dbsize.out
+    then
+        info_msg "MySQL Database size successfully written to '${OUTPUT_PATH}/mysql_dbsize.out'"
+    else
+        error_msg "Failed to acquire the MySQL database size."
+    fi
+
+    # Collect the on-disk size of the MYSQL_DATA_DIR subdirectories
+    if du -h --max-depth=1 "${MYSQL_DATA_DIR}" &> "${OUTPUT_PATH}/du_-h.mysql_data_dir.out"
+    then
+        info_msg "Successfully collected the on-disk size for '${MYSQL_DATA_DIR}'. See '${OUTPUT_PATH}/du_-h.mysql_data_dir.out'."
+    else
+        error_msg "Failed to collect the on-disk size for '${MYSQL_DATA_DIR}'. See '${OUTPUT_PATH}/du_-h.mysql_data_dir.out' for more information."
+    fi
+
     return 0 # We don't want to stop further processing on error
 }
 
@@ -1060,7 +1076,7 @@ log_stdout_stderr "${OUTPUT_PATH}"
 display_start_info "$*"
 
 # Define the array of functions to call in the correct order
-functions=("check_mysql_data_dir" "check_cgroups" "create_network" "set_numactl_options" "create_sysbench_container_image" "start_sysbench_containers" "check_my_cnf_dir_exists" "start_mysql_containers" "pause_for_stability" "create_mysql_databases" "prepare_the_database" "warm_the_database" "run_the_benchmark" "cleanup_database" "get_container_logs" "get_mysql_config" "stop_containers" "remove_containers")
+functions=("check_mysql_data_dir" "check_cgroups" "create_network" "set_numactl_options" "create_sysbench_container_image" "start_sysbench_containers" "check_my_cnf_dir_exists" "start_mysql_containers" "pause_for_stability" "create_mysql_databases" "prepare_the_database" "get_mysql_config" "warm_the_database" "run_the_benchmark" "cleanup_database" "get_container_logs" "stop_containers" "remove_containers")
 
 # Iterate over the array of functions and call them one by one
 # Handle the return value: 0=Success, 1=Failure
