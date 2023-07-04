@@ -292,17 +292,15 @@ EOF
         # TODO: Simplify this check since we're only checking a single PID
         for pid in "${pids[@]}"; do
             if [ $? -eq 0 ]; then
-                echo "Podman build command succeeded!"
+                info_msg "Podman build command succeeded!"
             else
-                echo "Podman build command failed! Check the 'podman_build.log' for more information. Exiting"
+                error_msg "Podman build command failed! Check the 'podman_build.log' for more information. Exiting"
                 err_state=true
-                # exit
             fi
         done
 
         kill $spin_pid 2> /dev/null
     fi
-    info_msg "Done Creating the SysBench Container Image."
 
     if ${err_state}; then
         return 1
@@ -361,7 +359,6 @@ function start_mysql_containers()
                 failed_msg "[Creation of container mysql${i} failed. Exiting"
                 err_state=true
             fi
-            echo "Done."
         fi
 
         # Start the MySQL container on specific NUMA node if it's not already running
@@ -369,7 +366,7 @@ function start_mysql_containers()
             info_msg "Starting MySQL container 'mysql${i}'..."
             if numactl ${NUMACTL_OPTION} podman start mysql${i} &> /dev/null
             then
-                info_msg "Done"
+                info_msg "Container 'mysql${i}' started successfully."
             else
                 error_msg "Container 'mysql${i}' failed to start. Check 'podman logs mysq${i}'"
                 err_state=true
@@ -427,13 +424,12 @@ function start_sysbench_containers()
             else
                 info_msg "Container 'sysbench${i}' created successfully"
             fi
-            echo "Done."
         elif ! podman ps --format "{{.Names}}" | grep -q sysbench${i}; then
             # Container exists, so start it
             info_msg "Starting SysBench container 'sysbench${i}'..."
             if numactl --cpunodebind=${SYSBENCH_NUMA_NODE} --membind=${SYSBENCH_NUMA_NODE} podman start sysbench${i} &> /dev/null
             then
-                info_msg "Done"
+                info_msg "Container 'sysbench${i}' started successfully."
             else
                 error_msg "Container 'sysbench${i}' failed to start. Check 'podman logs sysbench${i}'"
                 err_state=true
@@ -516,7 +512,6 @@ function create_mysql_databases()
             err_state=true
             break # Exit the loop on error
         fi
-        echo "Done"
 
         # Create the ${SYSBENCH_USER} user and grant privileges
         info_msg "Server: mysql${i}: Creating the '${SYSBENCH_USER}'... "
