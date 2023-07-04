@@ -187,14 +187,14 @@ function create_network()
         info_msg "Creating a new Podman network called '${NETWORK_NAME}'."
         # podman network create ${NETWORK_NAME}
         if podman network create "${NETWORK_NAME}"; then
-            info_msg "Network ${NETWORK_NAME} created successfully"
+            info_msg "Network '${NETWORK_NAME}' created successfully"
             return 0
         else
-            error_msg "Error creating network ${NETWORK_NAME}"
+            error_msg "Error creating network '${NETWORK_NAME}'"
             return 1
         fi
     else
-        info_msg "Network ${NETWORK_NAME} already exists"
+        info_msg "Network '${NETWORK_NAME}' already exists"
         return 0
    fi
 }
