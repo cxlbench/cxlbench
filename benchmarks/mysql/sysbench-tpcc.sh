@@ -508,7 +508,7 @@ function create_mysql_databases()
             break # Exit the loop on error
         fi
 
-        if podman exec -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD}" -i mysql${i} mysql -uroot -e "CREATE DATABASE IF NOT EXISTS ${SysbenchDBName};" > /dev/null 2> "${OUTPUT_PATH}/podman_exec_create_database.err" > /dev/null 2> "${OUTPUT_PATH}/podman_exec_create_database.err"
+        if podman exec -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD}" -i mysql${i} mysql -uroot -e "CREATE DATABASE IF NOT EXISTS ${SysbenchDBName};" > /dev/null 2> "${OUTPUT_PATH}/podman_exec_create_database.err"
         then
             info_msg "Successfully created the '${SysbenchDBName}' database"
         else
@@ -545,11 +545,15 @@ function prepare_the_database()
     local pids
     local spin_pid
     local err_state=false
+    local duration          # Time taken to complete this task
+    local start_time        # Start time in epoch seconds
     
     if [ -z ${PREPARE_DB} ];
     then
         return 0
     fi
+
+    start_time=$(date +%s)
 
     # Prepare the database
     info_msg "Preparing the database(s). This will take some time. Please be patient..."
@@ -569,7 +573,7 @@ function prepare_the_database()
     # Check the exit status of the tpcc.lua prepare command
     for pid in "${pids[@]}"; do
         if [ $? -eq 0 ]; then
-            info_msg " ... Sysbench Prepare for pid '${pid}' was successful"
+            info_msg " ... Sysbench Prepare for pid '${pid}' completed successfully"
         else
             error_msg " ... Sysbench Prepare for pid '${pid}' failed"
             err_state=true
@@ -577,6 +581,10 @@ function prepare_the_database()
     done
 
     kill $spin_pid 
+
+    # Calculate the time to prepare the database
+    duration=$(calc_time_duration ${start_time})
+    info_msg "Prepare completed in ${duration}"
 
     if ${err_state}; then
         return 1
@@ -594,11 +602,16 @@ function warm_the_database()
     local pids
     local spin_pid
     local err_state=false
+    local duration          # Time taken to complete this task
+    local start_time        # Start time in epoch seconds
 
     if [ -z ${WARM_DB} ];
     then
         return 0
     fi
+
+    start_time=$(date +%s)    # Start time in epoch seconds
+
     # Warm the database
     info_msg "Warming the database. This will take approximately ${SYSBENCH_WARMTIME} seconds. Please be patient..."
     for i in $(seq 1 ${PM_INSTANCES});
@@ -616,9 +629,9 @@ function warm_the_database()
     # Check the exit status of the tpcc.lua run command
     for pid in "${pids[@]}"; do
         if [ $? -eq 0 ]; then
-            info_msg "Sysbench Warm operation for pid '${pid}' was successful"
+            info_msg " ... Sysbench Warm operation for pid '${pid}' completed successfully"
         else
-            error_msg "Sysbench Warm operation for pid '${pid}' failed"
+            error_msg " ... Sysbench Warm operation for pid '${pid}' failed"
             err_state=true
             # exit
         fi
@@ -626,7 +639,9 @@ function warm_the_database()
 
     kill $spin_pid 
 
-    info_msg "Warmup Completed"
+    # Calculate the time to warmup the database
+    duration=$(calc_time_duration ${start_time})
+    info_msg "Warmup completed in ${duration}"
 
     if ${err_state}; then
         return 1
@@ -645,6 +660,8 @@ function run_the_benchmark()
     local PODMAN_STATS_OUTPUT_FILE
     local PODMAN_STATS_PID
     local err_state=false
+    local duration          # Time taken to complete this task
+    local start_time    # Start time in epoch seconds
 
     if [ -z ${RUN_TEST} ];
     then
@@ -653,6 +670,8 @@ function run_the_benchmark()
 
     info_msg "Executing the benchmark run..."
     dstat_find_location_of_db
+
+    start_time=$(date +%s)    # Start time in epoch seconds
 
     # Initiate ramp up tests that start ever increasing number of clients
     # Be careful not to exceed the CPU resources of the Sysbench container
@@ -687,7 +706,7 @@ function run_the_benchmark()
 
             # Check the exit status of the podman build command
             if [ $? -eq 0 ]; then
-                info_msg " ...... Sysbench Run operation for pid '${pid}' was successful"
+                info_msg " ...... Sysbench Run operation for pid '${pid}' completed succesfuly"
             else
                 error_msg " ...... Sysbench Run operation for pid '${pid}' failed"
                 err_state=true
@@ -706,7 +725,10 @@ function run_the_benchmark()
         sed -i 's/"read"/"iops_reads"/g' ${DSTATFILE}
         sed -i 's/"writ"/"iops_writ"/g' ${DSTATFILE}
     done
-    info_msg "Sysbench completed"
+
+    # Calculate the time to warmup the database
+    duration=$(calc_time_duration ${start_time})
+    info_msg "Sysbench completed in ${duration}"
 
     if ${err_state}; then
         return 1
@@ -955,6 +977,53 @@ function check_my_cnf_dir_exists() {
         info_msg "'${MYSQL_CONF}' exists."
         return 0
     fi
+}
+
+# Calculate the time difference between two datetimes
+# arg1: start time in seconds/epoch
+# arg2: end time in seconds/epoch. If $2 is not provided, now() is used
+# return: String with calculated difference in days, hours, mins, secs
+function calc_time_duration() {
+    local STIME=$1      # Start Time
+    local ETIME=$2      # End Time. Defaults to now() if not provided
+    local DURATION=0    # ETIME-STIME
+    local result=""     # Returned result
+
+    if [[ -z "${STIME}" ]]; then
+        return 1 # Error. Must supply the start time
+    fi
+
+    if [[ -z "${ETIME}" ]]; then
+        ETIME=$(date +%s)
+    fi
+    
+    DURATION=$((${ETIME}-${STIME}))
+
+    # Convert seconds to days, hours, minutes, and seconds.
+    # Only return the days, hours, and minutes if they are non-zero
+
+    local days=$((DURATION / 86400))
+    local hours=$(( (DURATION % 86400) / 3600 ))
+    local minutes=$(( (DURATION % 3600) / 60 ))
+    local seconds=$((DURATION % 60))
+
+    if (( days > 0 )); then
+        result+="${days} day(s), "
+    fi
+
+    if (( hours > 0 )); then
+        result+="${hours} hour(s), "
+    fi
+
+    if (( minutes > 0 )); then
+        result+="${minutes} minute(s), "
+    fi
+
+    if (( seconds > 0 )); then
+        result+="${seconds} second(s)"
+    fi
+
+    echo "$result"
 }
 
 #################################################################################################
