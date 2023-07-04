@@ -673,7 +673,7 @@ function run_the_benchmark()
     for threads in 1 2 4 8 16 32 64 128 150
     # for threads in 1 2 4 8 16 32 64 128 192 256 384 425 500 768 1000
     do
-        info_msg " ... Start run with parameters threads=${threads} runtime=${RUNTIME} tables=${TABLES} ... "
+        info_msg " ... Start run with parameters threads=${threads} runtime=${SYSBENCH_RUNTIME} tables=${TABLES} ... "
         DSTATFILE=${OUTPUT_PATH}/${OUTPUT_PREFIX}_dstat-${threads}-threads.csv
         PODMAN_STATS_OUTPUT_FILE=${OUTPUT_PATH}/${OUTPUT_PREFIX}_podman_stats-${threads}-threads.out
 
