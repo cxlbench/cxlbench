@@ -352,7 +352,7 @@ function start_mysql_containers()
                         --network ${NETWORK_NAME}                       \
                         --cpus=${SERVER_CPU_LIMIT}                      \
                         --memory=${SERVER_MEMORY_LIMIT}                 \
-                        ${MySQLDockerImgTag}
+                        ${MySQLDockerImgTag} > /dev/null 2> ${OUTPUT_PATH}/podman_create_mysql{$i}.err
             if [ "$?" -ne "0" ];
             then
                 echo ""
