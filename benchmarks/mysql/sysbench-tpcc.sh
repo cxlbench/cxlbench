@@ -81,7 +81,7 @@ function init() {
 function verify_cmds() {
     local err_state=false
 
-    for CMD in numactl lscpu lspci grep cut sed awk podman; do
+    for CMD in numactl lscpu lspci grep cut sed awk podman dstat; do
         CMD_PATH=($(command -v ${CMD}))
         if [ ! -x "${CMD_PATH}" ]; then
             error_msg "${CMD} command not found! Please install the ${CMD} package."
