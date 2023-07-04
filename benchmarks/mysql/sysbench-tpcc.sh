@@ -345,8 +345,8 @@ function start_mysql_containers()
             info_msg "Container 'mysql${i}' doesn't exist. Creating it..."
             podman create --name mysql${i}                              \
                         -p ${MYSQL_PORT}:3306                           \
-                        -v ${MYSQL_CONF}:/etc/my.cnf                    \
-                        -v ${MYSQL_DATA_DIR}/mysql${i}:/var/lib/mysql   \
+                        -v ${MYSQL_CONF}:/etc/my.cnf:rw                 \
+                        -v ${MYSQL_DATA_DIR}/mysql${i}:/var/lib/mysql:rw \
                         -e MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}   \
                         -e MYSQL_DATABASE=${SysbenchDBName}             \
                         --network ${NETWORK_NAME}                       \
@@ -499,7 +499,7 @@ function create_mysql_databases()
         then
             info_msg "Successfully dropped the '${SysbenchDBName}' database"
         else
-            error_msg "Failed to drop the '${SysbenchDBName}' database"
+            error_msg "Failed to drop the '${SysbenchDBName}' database. See '${OUTPUT_PATH}/podman_exec_drop_database.err' for more information."
             err_state=true
             break # Exit the loop on error
         fi
