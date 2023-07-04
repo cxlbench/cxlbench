@@ -1021,6 +1021,26 @@ function calc_time_duration() {
     echo "$result"
 }
 
+# Check if SELinux is installed and 'Enforcing' as this can cause the MySQL
+#   initialization script inside the docker container to fail with permission 
+#   errors. Warn the user and have them temporarily disable it for the purposes
+#   of benchmarking.
+function check_selinux_enforce() {
+    if command -v getenforce > /dev/null || command -v sestatus > /dev/null; then
+        if [ "$(getenforce)" == "Enforcing" ]; then
+            error_msg "SELinux is in Enforcing mode. The database may have permission problems."
+            error_msg "Run 'sudo setenforce 0' to temporarily disable SELinux to allow the benchmarks to work correctly."
+            return 1
+        else
+            info_msg "SELinux is installed but not enabled"
+        fi
+    else
+        info_msg "SELinux is not installed"
+    fi
+
+    return 0
+}
+
 #################################################################################################
 # Main
 #################################################################################################
@@ -1140,7 +1160,7 @@ log_stdout_stderr "${OUTPUT_PATH}"
 display_start_info "$*"
 
 # Define the array of functions to call in the correct order
-functions=("check_mysql_data_dir" "check_cgroups" "create_network" "set_numactl_options" "create_sysbench_container_image" "start_sysbench_containers" "check_my_cnf_dir_exists" "start_mysql_containers" "pause_for_stability" "create_mysql_databases" "prepare_the_database" "get_mysql_config" "warm_the_database" "run_the_benchmark" "cleanup_database" "get_container_logs" "stop_containers" "remove_containers")
+functions=("check_selinux_enforce" "check_mysql_data_dir" "check_cgroups" "create_network" "set_numactl_options" "create_sysbench_container_image" "start_sysbench_containers" "check_my_cnf_dir_exists" "start_mysql_containers" "pause_for_stability" "create_mysql_databases" "prepare_the_database" "get_mysql_config" "warm_the_database" "run_the_benchmark" "cleanup_database" "get_container_logs" "stop_containers" "remove_containers")
 
 # Iterate over the array of functions and call them one by one
 # Handle the return value: 0=Success, 1=Failure
