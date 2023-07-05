@@ -40,12 +40,18 @@
 /*     program constitutes acceptance of these licensing restrictions.   */
 /*  5. Absolutely no warranty is expressed or implied.                   */
 /*-----------------------------------------------------------------------*/
-# include <stdio.h>
-# include <unistd.h>
-# include <math.h>
-# include <float.h>
-# include <limits.h>
-# include <sys/time.h>
+#include <ctype.h>
+#include <float.h>
+#include <getopt.h>
+#include <limits.h>
+#include <math.h>
+#include <numa.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/time.h>
+#include <unistd.h>
 
 /*-----------------------------------------------------------------------
  * INSTRUCTIONS:
@@ -62,13 +68,13 @@
  *           Example 1: One Xeon E3 with 8 MB L3 cache
  *               STREAM_ARRAY_SIZE should be >= 4 million, giving
  *               an array size of 30.5 MB and a total memory requirement
- *               of 91.5 MB.  
+ *               of 91.5 MB.
  *           Example 2: Two Xeon E5's with 20 MB L3 cache each (using OpenMP)
  *               STREAM_ARRAY_SIZE should be >= 20 million, giving
  *               an array size of 153 MB and a total memory requirement
- *               of 458 MB.  
+ *               of 458 MB.
  *       (b) The size should be large enough so that the 'timing calibration'
- *           output by the program is at least 20 clock-ticks.  
+ *           output by the program is at least 20 clock-ticks.
  *           Example: most versions of Windows have a 10 millisecond timer
  *               granularity.  20 "ticks" at 10 ms/tic is 200 milliseconds.
  *               If the chip is capable of 10 GB/s, it moves 2 GB in 200 msec.
@@ -77,22 +83,13 @@
  *      Version 5.10 increases the default array size from 2 million
  *          elements to 10 million elements in response to the increasing
  *          size of L3 caches.  The new default size is large enough for caches
- *          up to 20 MB. 
+ *          up to 20 MB.
  *      Version 5.10 changes the loop index variables from "register int"
  *          to "ssize_t", which allows array indices >2^32 (4 billion)
  *          on properly configured 64-bit systems.  Additional compiler options
  *          (such as "-mcmodel=medium") may be required for large memory runs.
- *
- *      Array size can be set at compile time without modifying the source
- *          code for the (many) compilers that support preprocessor definitions
- *          on the compile line.  E.g.,
- *                gcc -O -DSTREAM_ARRAY_SIZE=100000000 stream.c -o stream.100M
- *          will override the default size of 10M with a new size of 100M elements
- *          per array.
  */
-#ifndef STREAM_ARRAY_SIZE
-#   define STREAM_ARRAY_SIZE	10000000
-#endif
+static uint64_t stream_array_size = 1000000;
 
 /*  2) STREAM runs each kernel "NTIMES" times and reports the *best* result
  *         for any iteration after the first, therefore the minimum value
@@ -100,33 +97,20 @@
  *      There are no rules on maximum allowable values for NTIMES, but
  *         values larger than the default are unlikely to noticeably
  *         increase the reported performance.
- *      NTIMES can also be set on the compile line without changing the source
- *         code using, for example, "-DNTIMES=7".
  */
-#ifdef NTIMES
-#if NTIMES<=1
-#   define NTIMES	10
-#endif
-#endif
-#ifndef NTIMES
-#   define NTIMES	10
-#endif
+static uint16_t ntimes = 10;
 
 /*  Users are allowed to modify the "OFFSET" variable, which *may* change the
- *         relative alignment of the arrays (though compilers may change the 
- *         effective offset by making the arrays non-contiguous on some systems). 
+ *         relative alignment of the arrays (though compilers may change the
+ *         effective offset by making the arrays non-contiguous on some systems).
  *      Use of non-zero values for OFFSET can be especially helpful if the
  *         STREAM_ARRAY_SIZE is set to a value close to a large power of 2.
- *      OFFSET can also be set on the compile line without changing the source
- *         code using, for example, "-DOFFSET=56".
  */
-#ifndef OFFSET
-#   define OFFSET	0
-#endif
+static uint16_t offset = 0;
 
 /*
  *	3) Compile the code with optimization.  Many compilers generate
- *       unreasonably bad code before the optimizer tightens things up.  
+ *       unreasonably bad code before the optimizer tightens things up.
  *     If the results are unreasonably good, on the other hand, the
  *       optimizer might be too smart for me!
  *
@@ -137,7 +121,7 @@
  *     To use multiple cores, you need to tell the compiler to obey the OpenMP
  *       directives in the code.  This varies by compiler, but a common example is
  *            gcc -O -fopenmp stream.c -o stream_omp
- *       The environment variable OMP_NUM_THREADS allows runtime control of the 
+ *       The environment variable OMP_NUM_THREADS allows runtime control of the
  *         number of threads/cores used when the resulting "stream_omp" program
  *         is executed.
  *
@@ -146,73 +130,109 @@
  *     to the compile line.
  *     Note that this changes the minimum array sizes required --- see (1) above.
  *
- *     The preprocessor directive "TUNED" does not do much -- it simply causes the 
+ *     The preprocessor directive "TUNED" does not do much -- it simply causes the
  *       code to call separate functions to execute each kernel.  Trivial versions
- *       of these functions are provided, but they are *not* tuned -- they just 
+ *       of these functions are provided, but they are *not* tuned -- they just
  *       provide predefined interfaces to be replaced with tuned code.
  *
  *
  *	4) Optional: Mail the results to mccalpin@cs.virginia.edu
  *	   Be sure to include info that will help me understand:
- *		a) the computer hardware configuration (e.g., processor model, memory type)
- *		b) the compiler name/version and compilation flags
- *      c) any run-time information (such as OMP_NUM_THREADS)
- *		d) all of the output from the test case.
+ *		a) the computer hardware configuration (e.g., processor model, memory
+ *type) b) the compiler name/version and compilation flags c) any run-time information
+ *(such as OMP_NUM_THREADS) d) all of the output from the test case.
  *
  * Thanks!
  *
  *-----------------------------------------------------------------------*/
 
-# define HLINE "-------------------------------------------------------------\n"
+#define HLINE "-------------------------------------------------------------\n"
 
-# ifndef MIN
-# define MIN(x,y) ((x)<(y)?(x):(y))
-# endif
-# ifndef MAX
-# define MAX(x,y) ((x)>(y)?(x):(y))
-# endif
+#ifndef MIN
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
+#endif
+#ifndef MAX
+#define MAX(x, y) ((x) > (y) ? (x) : (y))
+#endif
 
 #ifndef STREAM_TYPE
 #define STREAM_TYPE double
 #endif
 
-static STREAM_TYPE	a[STREAM_ARRAY_SIZE+OFFSET],
-			b[STREAM_ARRAY_SIZE+OFFSET],
-			c[STREAM_ARRAY_SIZE+OFFSET];
+static STREAM_TYPE *a1, *a2, *b1, *b2, *c1, *c2;
 
-static double	avgtime[4] = {0}, maxtime[4] = {0},
-		mintime[4] = {FLT_MAX,FLT_MAX,FLT_MAX,FLT_MAX};
+static double avgtime[8] = {0}, maxtime[8] = {0},
+              mintime[8] = {FLT_MAX, FLT_MAX, FLT_MAX, FLT_MAX,
+                            FLT_MAX, FLT_MAX, FLT_MAX, FLT_MAX};
 
-static char	*label[4] = {"Copy:      ", "Scale:     ",
-    "Add:       ", "Triad:     "};
+static char *label[4] = {"Copy:      ", "Scale:     ", "Add:       ", "Triad:     "};
 
-static double	bytes[4] = {
-    2 * sizeof(STREAM_TYPE) * STREAM_ARRAY_SIZE,
-    2 * sizeof(STREAM_TYPE) * STREAM_ARRAY_SIZE,
-    3 * sizeof(STREAM_TYPE) * STREAM_ARRAY_SIZE,
-    3 * sizeof(STREAM_TYPE) * STREAM_ARRAY_SIZE
-    };
+static const STREAM_TYPE A1_TUNED = 1.0, A2_TUNED = 1.0, B1_TUNED = 2.0, B2_TUNED = 2.0,
+                         C1_TUNED = 0.0, C2_TUNED = 0.0;
+
+static const int TIMES_LEN = 8;
 
 extern double mysecond();
 extern void checkSTREAMresults();
+extern uint64_t convert_array_size(char *);
+extern uint64_t *parse_cli_args(int, char **, uint64_t *);
+extern void upperbound_errors(int *, int *, double, STREAM_TYPE *, STREAM_TYPE,
+                              STREAM_TYPE, char *);
 #ifdef TUNED
-extern void tuned_STREAM_Copy();
-extern void tuned_STREAM_Scale(STREAM_TYPE scalar);
-extern void tuned_STREAM_Add();
-extern void tuned_STREAM_Triad(STREAM_TYPE scalar);
+extern void tuned_STREAM_Copy(STREAM_TYPE *, STREAM_TYPE *);
+extern void tuned_STREAM_Scale(STREAM_TYPE, STREAM_TYPE *, STREAM_TYPE *);
+extern void tuned_STREAM_Add(STREAM_TYPE *, STREAM_TYPE *, STREAM_TYPE *);
+extern void tuned_STREAM_Triad(STREAM_TYPE, STREAM_TYPE *, STREAM_TYPE *, STREAM_TYPE *);
 #endif
 #ifdef _OPENMP
 extern int omp_get_num_threads();
 #endif
-int
-main()
-    {
-    int			quantum, checktick();
-    int			BytesPerWord;
-    int			k;
-    ssize_t		j;
-    STREAM_TYPE		scalar;
-    double		t, times[4][NTIMES];
+int main(int argc, char **argv) {
+    size_t numa_nodes[2] = {-1, -1};
+
+    parse_cli_args(argc, argv, numa_nodes);
+
+    int quantum, checktick();
+    int BytesPerWord;
+    int k;
+    ssize_t j;
+    STREAM_TYPE scalar;
+    double t, times[8][ntimes];
+
+    double bytes[8] = {2 * sizeof(STREAM_TYPE) * stream_array_size,
+                       2 * sizeof(STREAM_TYPE) * stream_array_size,
+                       3 * sizeof(STREAM_TYPE) * stream_array_size,
+                       3 * sizeof(STREAM_TYPE) * stream_array_size,
+                       2 * sizeof(STREAM_TYPE) * stream_array_size,
+                       2 * sizeof(STREAM_TYPE) * stream_array_size,
+                       3 * sizeof(STREAM_TYPE) * stream_array_size,
+                       3 * sizeof(STREAM_TYPE) * stream_array_size};
+
+    int from_node = numa_nodes[0];
+    int to_node = numa_nodes[0];
+
+    if (numa_nodes[1] != -1) {
+        to_node = numa_nodes[1];
+    }
+
+    int numa_node_size = (stream_array_size + offset) * sizeof(STREAM_TYPE);
+
+    numa_set_strict(1);
+
+    a1 = numa_alloc_onnode(numa_node_size, from_node);
+    a2 = numa_alloc_onnode(numa_node_size, to_node);
+
+    b1 = numa_alloc_onnode(numa_node_size, from_node);
+    b2 = numa_alloc_onnode(numa_node_size, to_node);
+
+    c1 = numa_alloc_onnode(numa_node_size, from_node);
+    c2 = numa_alloc_onnode(numa_node_size, to_node);
+
+    if (!a1 || !a2 || !b1 || !b2 || !c1 || !c2) {
+        printf("ERROR: numa_alloc_onnode failed to allocate memory on desired node. "
+               "Aborting.\n");
+        abort();
+    }
 
     /* --- SETUP --- determine precision and check timing --- */
 
@@ -220,77 +240,87 @@ main()
     printf("STREAM version $Revision: 5.10 $\n");
     printf(HLINE);
     BytesPerWord = sizeof(STREAM_TYPE);
-    printf("This system uses %d bytes per array element.\n",
-	BytesPerWord);
+    printf("This system uses %d bytes per array element.\n", BytesPerWord);
 
     printf(HLINE);
 #ifdef N
     printf("*****  WARNING: ******\n");
-    printf("      It appears that you set the preprocessor variable N when compiling this code.\n");
-    printf("      This version of the code uses the preprocesor variable STREAM_ARRAY_SIZE to control the array size\n");
-    printf("      Reverting to default value of STREAM_ARRAY_SIZE=%llu\n",(unsigned long long) STREAM_ARRAY_SIZE);
+    printf("      It appears that you set the preprocessor variable N when compiling "
+           "this code.\n");
+    printf("      This version of the code uses the preprocesor variable "
+           "STREAM_ARRAY_SIZE to control the array size\n");
+    printf("      Reverting to default value of STREAM_ARRAY_SIZE=%llu\n",
+           (unsigned long long)STREAM_ARRAY_SIZE);
     printf("*****  WARNING: ******\n");
 #endif
 
-    printf("Array size = %llu (elements), Offset = %d (elements)\n" , (unsigned long long) STREAM_ARRAY_SIZE, OFFSET);
-    printf("Memory per array = %.1f MiB (= %.1f GiB).\n", 
-	BytesPerWord * ( (double) STREAM_ARRAY_SIZE / 1024.0/1024.0),
-	BytesPerWord * ( (double) STREAM_ARRAY_SIZE / 1024.0/1024.0/1024.0));
+    printf("Array size = %llu (elements), Offset = %d (elements)\n",
+           (unsigned long long)stream_array_size, offset);
+    printf("Memory per array = %.1f MiB (= %.1f GiB).\n",
+           BytesPerWord * ((double)stream_array_size / 1024.0 / 1024.0),
+           BytesPerWord * ((double)stream_array_size / 1024.0 / 1024.0 / 1024.0));
     printf("Total memory required = %.1f MiB (= %.1f GiB).\n",
-	(3.0 * BytesPerWord) * ( (double) STREAM_ARRAY_SIZE / 1024.0/1024.),
-	(3.0 * BytesPerWord) * ( (double) STREAM_ARRAY_SIZE / 1024.0/1024./1024.));
-    printf("Each kernel will be executed %d times.\n", NTIMES);
-    printf(" The *best* time for each kernel (excluding the first iteration)\n"); 
+           (3.0 * BytesPerWord) * ((double)stream_array_size / 1024.0 / 1024.),
+           (3.0 * BytesPerWord) * ((double)stream_array_size / 1024.0 / 1024. / 1024.));
+    printf("Each kernel will be executed %d times.\n", ntimes);
+    printf(" The *best* time for each kernel (excluding the first iteration)\n");
     printf(" will be used to compute the reported bandwidth.\n");
 
 #ifdef _OPENMP
     printf(HLINE);
-#pragma omp parallel 
+#pragma omp parallel
     {
 #pragma omp master
-	{
-	    k = omp_get_num_threads();
-	    printf ("Number of Threads requested = %i\n",k);
+        {
+            k = omp_get_num_threads();
+            printf("Number of Threads requested = %i\n", k);
         }
     }
 #endif
 
 #ifdef _OPENMP
-	k = 0;
+    k = 0;
 #pragma omp parallel
-#pragma omp atomic 
-		k++;
-    printf ("Number of Threads counted = %i\n",k);
+#pragma omp atomic
+    k++;
+    printf("Number of Threads counted = %i\n", k);
 #endif
 
     /* Get initial value for system clock. */
 #pragma omp parallel for
-    for (j=0; j<STREAM_ARRAY_SIZE; j++) {
-	    a[j] = 1.0;
-	    b[j] = 2.0;
-	    c[j] = 0.0;
-	}
+    for (j = 0; j < stream_array_size; j++) {
+        a1[j] = A1_TUNED;
+        a2[j] = A2_TUNED;
+
+        b1[j] = B1_TUNED;
+        b2[j] = B2_TUNED;
+
+        c1[j] = C1_TUNED;
+        c2[j] = C2_TUNED;
+    }
 
     printf(HLINE);
 
-    if  ( (quantum = checktick()) >= 1) 
-	printf("Your clock granularity/precision appears to be "
-	    "%d microseconds.\n", quantum);
+    if ((quantum = checktick()) >= 1)
+        printf("Your clock granularity/precision appears to be "
+               "%d microseconds.\n",
+               quantum);
     else {
-	printf("Your clock granularity appears to be "
-	    "less than one microsecond.\n");
-	quantum = 1;
+        printf("Your clock granularity appears to be "
+               "less than one microsecond.\n");
+        quantum = 1;
     }
 
     t = mysecond();
 #pragma omp parallel for
-    for (j = 0; j < STREAM_ARRAY_SIZE; j++)
-		a[j] = 2.0E0 * a[j];
+    for (j = 0; j < stream_array_size; j++)
+        a1[j] = 2.0E0 * a1[j];
     t = 1.0E6 * (mysecond() - t);
 
     printf("Each test below will take on the order"
-	" of %d microseconds.\n", (int) t  );
-    printf("   (= %d clock ticks)\n", (int) (t/quantum) );
+           " of %d microseconds.\n",
+           (int)t);
+    printf("   (= %d clock ticks)\n", (int)(t / quantum));
     printf("Increase the size of the arrays if this shows that\n");
     printf("you are not getting at least 20 clock ticks per test.\n");
 
@@ -300,74 +330,117 @@ main()
     printf("For best results, please be sure you know the\n");
     printf("precision of your system timer.\n");
     printf(HLINE);
-    
-    /*	--- MAIN LOOP --- repeat test cases NTIMES times --- */
+
+    /*	--- MAIN LOOP --- repeat test cases ntimes times --- */
 
     scalar = 3.0;
-    for (k=0; k<NTIMES; k++)
-	{
-	times[0][k] = mysecond();
+    for (k = 0; k < ntimes; k++) {
+        times[0][k] = mysecond();
 #ifdef TUNED
-        tuned_STREAM_Copy();
+        tuned_STREAM_Copy(b2, a1);
 #else
 #pragma omp parallel for
-	for (j=0; j<STREAM_ARRAY_SIZE; j++)
-	    c[j] = a[j];
+        // i. copy node1-to-node2. (read a1, write b2)
+        for (j = 0; j < stream_array_size; j++)
+            b2[j] = a1[j];
 #endif
-	times[0][k] = mysecond() - times[0][k];
-	
-	times[1][k] = mysecond();
+        times[0][k] = mysecond() - times[0][k];
+
+        times[1][k] = mysecond();
 #ifdef TUNED
-        tuned_STREAM_Scale(scalar);
+        tuned_STREAM_Scale(scalar, a1, b2);
 #else
 #pragma omp parallel for
-	for (j=0; j<STREAM_ARRAY_SIZE; j++)
-	    b[j] = scalar*c[j];
+        // ii. scale node2-to-node1 (read b2, write a1)
+        for (j = 0; j < stream_array_size; j++)
+            a1[j] = scalar * b2[j];
 #endif
-	times[1][k] = mysecond() - times[1][k];
-	
-	times[2][k] = mysecond();
+        times[1][k] = mysecond() - times[1][k];
+
+        times[2][k] = mysecond();
 #ifdef TUNED
-        tuned_STREAM_Add();
+        tuned_STREAM_Add(c2, a1, b1);
 #else
 #pragma omp parallel for
-	for (j=0; j<STREAM_ARRAY_SIZE; j++)
-	    c[j] = a[j]+b[j];
+        // iii. add node1-to-node2 (read a1, b1, write c2)
+        for (j = 0; j < stream_array_size; j++)
+            c2[j] = a1[j] + b1[j];
 #endif
-	times[2][k] = mysecond() - times[2][k];
-	
-	times[3][k] = mysecond();
+        times[2][k] = mysecond() - times[2][k];
+
+        times[3][k] = mysecond();
 #ifdef TUNED
-        tuned_STREAM_Triad(scalar);
+        tuned_STREAM_Triad(scalar, a2, b2, c2);
 #else
 #pragma omp parallel for
-	for (j=0; j<STREAM_ARRAY_SIZE; j++)
-	    a[j] = b[j]+scalar*c[j];
+        // iv. triad node2-to-node1 (read b2, c2, write a2)
+        for (j = 0; j < stream_array_size; j++)
+            a2[j] = b2[j] + scalar * c2[j];
 #endif
-	times[3][k] = mysecond() - times[3][k];
-	}
+        times[3][k] = mysecond() - times[3][k];
+
+        times[4][k] = mysecond();
+#ifdef TUNED
+        tuned_STREAM_Copy(b1, a2);
+#else
+#pragma omp parallel for
+        // v. copy node2-to-node1 (read a2, write b1)
+        for (j = 0; j < stream_array_size; j++)
+            b1[j] = a2[j];
+#endif
+        times[4][k] = mysecond() - times[4][k];
+
+        times[5][k] = mysecond();
+#ifdef TUNED
+        tuned_STREAM_Scale(scalar, a2, b1);
+#else
+#pragma omp parallel for
+        // vi. scale node1-to-node2 (read b1, write a2)
+        for (j = 0; j < stream_array_size; j++)
+            a2[j] = scalar * b1[j];
+#endif
+        times[5][k] = mysecond() - times[5][k];
+
+        times[6][k] = mysecond();
+#ifdef TUNED
+        tuned_STREAM_Add(c1, a2, b2);
+#else
+#pragma omp parallel for
+        // vii. add node2-to-node1 (read a2, b2, write c1)
+        for (j = 0; j < stream_array_size; j++)
+            c1[j] = a2[j] + b2[j];
+#endif
+        times[6][k] = mysecond() - times[6][k];
+
+        times[7][k] = mysecond();
+#ifdef TUNED
+        tuned_STREAM_Triad(scalar, a2, b1, c1);
+#else
+#pragma omp parallel for
+        // viii. triad node1-to-node2 (read b1, c1, write a2)
+        for (j = 0; j < stream_array_size; j++)
+            a2[j] = b1[j] + scalar * c1[j];
+#endif
+        times[7][k] = mysecond() - times[7][k];
+    }
 
     /*	--- SUMMARY --- */
 
-    for (k=1; k<NTIMES; k++) /* note -- skip first iteration */
-	{
-	for (j=0; j<4; j++)
-	    {
-	    avgtime[j] = avgtime[j] + times[j][k];
-	    mintime[j] = MIN(mintime[j], times[j][k]);
-	    maxtime[j] = MAX(maxtime[j], times[j][k]);
-	    }
-	}
-    
-    printf("Function    Best Rate MB/s  Avg time     Min time     Max time\n");
-    for (j=0; j<4; j++) {
-		avgtime[j] = avgtime[j]/(double)(NTIMES-1);
+    for (k = 1; k < ntimes; k++) /* note -- skip first iteration */
+    {
+        for (j = 0; j < TIMES_LEN; j++) {
+            avgtime[j] = avgtime[j] + times[j][k];
+            mintime[j] = MIN(mintime[j], times[j][k]);
+            maxtime[j] = MAX(maxtime[j], times[j][k]);
+        }
+    }
 
-		printf("%s%12.1f  %11.6f  %11.6f  %11.6f\n", label[j],
-	       1.0E-06 * bytes[j]/mintime[j],
-	       avgtime[j],
-	       mintime[j],
-	       maxtime[j]);
+    printf("Function    Best Rate MB/s  Avg time     Min time     Max time\n");
+    for (j = 0; j < TIMES_LEN; j++) {
+        avgtime[j] = avgtime[j] / (double)(ntimes - 1);
+
+        printf("%s%12.1f  %11.6f  %11.6f  %11.6f\n", label[j % 4],
+               1.0E-06 * bytes[j] / mintime[j], avgtime[j], mintime[j], maxtime[j]);
     }
     printf(HLINE);
 
@@ -375,211 +448,340 @@ main()
     checkSTREAMresults();
     printf(HLINE);
 
+    /* --- Cleaning Up --- */
+
+    numa_free(a1, numa_node_size);
+    numa_free(a2, numa_node_size);
+
+    numa_free(b1, numa_node_size);
+    numa_free(b2, numa_node_size);
+
+    numa_free(c1, numa_node_size);
+    numa_free(c2, numa_node_size);
+
     return 0;
 }
 
-# define	M	20
+static const int HELP_LEN = 5;
+static char *HELP[] = {
+    "--ntimes <integer-value>                              Default value 10",
+    "--array-size <integer-value>|<integer-value><K|M|G>   Default value 1000000",
+    "--offset <integer-value>                              Default value 0",
+    "--numa-nodes <integer>,<integer>",
+    // "--auto-array-size",
+    "--help"};
 
-int
-checktick()
-    {
-    int		i, minDelta, Delta;
-    double	t1, t2, timesfound[M];
+static struct option long_options[5] = {{"ntimes", optional_argument, 0, 't'},
+                                        {"array-size", optional_argument, 0, 'a'},
+                                        {"offset", optional_argument, 0, 'o'},
+                                        {"numa-nodes", required_argument, 0, 'n'},
+                                        // {"auto-array-size", no_argument, 0, 's'},
+                                        {"help", no_argument, 0, 'h'}};
 
-/*  Collect a sequence of M unique time values from the system. */
+uint64_t *parse_cli_args(int argc, char **argv, uint64_t *numa_nodes) {
+    int c;
+    int found_numa = 0;
+
+    while (1) {
+        int option_index = 0;
+
+        c = getopt_long_only(argc, argv, "", long_options, &option_index);
+
+        if (c == -1) {
+            break;
+        }
+
+        if (long_options[option_index].flag != 0) {
+            break;
+        }
+
+        // Optional arguments take this, while required arguments take `optarg`
+        char *arg = argv[optind];
+
+        switch (c) {
+        case 't':
+            if (arg)
+                ntimes = atoi(arg);
+            break;
+        case 'a':
+            if (arg)
+                stream_array_size = convert_array_size(arg);
+            break;
+        case 'o':
+            if (arg)
+                offset = atoi(arg);
+            break;
+        case 'n':
+            if (optarg) {
+                if (strchr(optarg, ',') == NULL) {
+                    numa_nodes[0] = atoi(optarg);
+
+                    found_numa = 1;
+                } else {
+                    char *s1 = strdup(optarg);
+                    char *s0 = strsep(&s1, ",");
+
+                    numa_nodes[0] = atoi(s0);
+                    numa_nodes[1] = atoi(s1);
+
+                    free(s0);
+
+                    found_numa = 1;
+                }
+            }
+            break;
+        case 'h':
+            printf("Stream Benchmark CLI Help\n\n");
+            for (int i = 0; i < HELP_LEN; i++)
+                printf("%s\n", HELP[i]);
+            break;
+        default:
+            break;
+        }
+    }
+
+    if (!found_numa) {
+        printf("No numa nodes inputted. Aborting.\n");
+        abort();
+    }
+
+    return numa_nodes;
+}
+
+uint64_t convert_array_size(char *s) {
+    char last_char = s[strlen(s) - 1];
+    uint64_t last_digit_index = strlen(s) - (isdigit(last_char) ? 1 : 2);
+    char *s0 = strndup(s, last_digit_index);
+
+    uint64_t base = atoll(s0);
+
+    switch (last_char) {
+    case 'K':
+        base *= 1000;
+        break;
+    case 'M':
+        base *= 1e6; // 1 million
+        break;
+    case 'G':
+        base *= 1e9; // 1 billion
+        break;
+    default:
+        break;
+    }
+
+    free(s0);
+
+    return base;
+}
+
+#define M 20
+
+int checktick() {
+    int i, minDelta, Delta;
+    double t1, t2, timesfound[M];
+
+    /*  Collect a sequence of M unique time values from the system. */
 
     for (i = 0; i < M; i++) {
-	t1 = mysecond();
-	while( ((t2=mysecond()) - t1) < 1.0E-6 )
-	    ;
-	timesfound[i] = t1 = t2;
-	}
+        t1 = mysecond();
+        while (((t2 = mysecond()) - t1) < 1.0E-6)
+            ;
+        timesfound[i] = t1 = t2;
+    }
 
-/*
- * Determine the minimum difference between these M values.
- * This result will be our estimate (in microseconds) for the
- * clock granularity.
- */
+    /*
+     * Determine the minimum difference between these M values.
+     * This result will be our estimate (in microseconds) for the
+     * clock granularity.
+     */
 
     minDelta = 1000000;
     for (i = 1; i < M; i++) {
-	Delta = (int)( 1.0E6 * (timesfound[i]-timesfound[i-1]));
-	minDelta = MIN(minDelta, MAX(Delta,0));
-	}
-
-   return(minDelta);
+        Delta = (int)(1.0E6 * (timesfound[i] - timesfound[i - 1]));
+        minDelta = MIN(minDelta, MAX(Delta, 0));
     }
 
-
+    return (minDelta);
+}
 
 /* A gettimeofday routine to give access to the wall
    clock timer on most UNIX-like systems.  */
 
 #include <sys/time.h>
 
-double mysecond()
-{
-        struct timeval tp;
-        struct timezone tzp;
-        int i;
+double mysecond() {
+    struct timeval tp;
+    struct timezone tzp;
 
-        i = gettimeofday(&tp,&tzp);
-        return ( (double) tp.tv_sec + (double) tp.tv_usec * 1.e-6 );
+    gettimeofday(&tp, &tzp);
+    return ((double)tp.tv_sec + (double)tp.tv_usec * 1.e-6);
+}
+
+void upperbound_errors(int *err, int *ierr, double epsilon, STREAM_TYPE *x,
+                       STREAM_TYPE xj, STREAM_TYPE x_avg_err, char *x_array_name) {
+    if (abs(x_avg_err / xj) > epsilon) {
+        (*err)++;
+        printf("Failed Validation on array %s, AvgRelAbsErr > epsilon (%e)\n",
+               x_array_name, epsilon);
+        printf("     Expected Value: %e, AvgAbsErr: %e, AvgRelAbsErr: %e\n", xj,
+               x_avg_err, abs(x_avg_err) / xj);
+        *ierr = 0;
+        for (ssize_t j = 0; j < stream_array_size; j++) {
+            if (abs(x[j] / xj - 1.0) > epsilon) {
+                (*ierr)++;
+#ifdef VERBOSE
+                if (ierr < 10) {
+                    printf("         array %s: index: %ld, expected: %e, observed: %e, "
+                           "relative error: %e\n",
+                           x_array_name, j, xj, x[j], abs((xj - x[j]) / x_avg_err));
+                }
+#endif
+            }
+        }
+        printf("     For array %s[], %d errors were found.\n", x_array_name, *ierr);
+    }
 }
 
 #ifndef abs
 #define abs(a) ((a) >= 0 ? (a) : -(a))
 #endif
-void checkSTREAMresults ()
-{
-	STREAM_TYPE aj,bj,cj,scalar;
-	STREAM_TYPE aSumErr,bSumErr,cSumErr;
-	STREAM_TYPE aAvgErr,bAvgErr,cAvgErr;
-	double epsilon;
-	ssize_t	j;
-	int	k,ierr,err;
+void checkSTREAMresults() {
+    STREAM_TYPE a1j, a2j, b1j, b2j, c1j, c2j, scalar;
+    STREAM_TYPE a1SumErr, a2SumErr, b1SumErr, b2SumErr, c1SumErr, c2SumErr;
+    STREAM_TYPE a1AvgErr, a2AvgErr, b1AvgErr, b2AvgErr, c1AvgErr, c2AvgErr;
+    double epsilon;
+    ssize_t j;
+    int k;
 
     /* reproduce initialization */
-	aj = 1.0;
-	bj = 2.0;
-	cj = 0.0;
-    /* a[] is modified during timing check */
-	aj = 2.0E0 * aj;
+    a1j = A1_TUNED;
+    a2j = A2_TUNED;
+
+    b1j = B1_TUNED;
+    b2j = B2_TUNED;
+
+    c1j = C1_TUNED;
+    c2j = C2_TUNED;
+    /* a1[] is modified during timing check */
+    a1j = 2.0E0 * a1j;
     /* now execute timing loop */
-	scalar = 3.0;
-	for (k=0; k<NTIMES; k++)
-        {
-            cj = aj;
-            bj = scalar*cj;
-            cj = aj+bj;
-            aj = bj+scalar*cj;
-        }
+    scalar = 3.0;
+    for (k = 0; k < ntimes; k++) {
+        // i. copy node1-to-node2. (read a1, write b2)
+        b2j = a1j;
+        // ii. scale node2-to-node1 (read b2, write a1)
+        a1j = scalar * b2j;
+        // iii. add node1-to-node2 (read a1, b1, write c2)
+        c2j = a1j + b1j;
+        // iv. triad node2-to-node1 (read b2, c2, write a2)
+        a2j = b2j + scalar * c2j;
+        // v. copy node2-to-node1 (read a2, write b1)
+        b1j = a2j;
+        // vi. scale node1-to-node2 (read b1, write a2)
+        a2j = scalar * b1j;
+        // vii. add node2-to-node1 (read a2, b2, write c1)
+        c1j = a2j + b2j;
+        // viii. triad node1-to-node2 (read b1, c1, write a2)
+        a2j = b1j + scalar * c1j;
+    }
 
     /* accumulate deltas between observed and expected results */
-	aSumErr = 0.0;
-	bSumErr = 0.0;
-	cSumErr = 0.0;
-	for (j=0; j<STREAM_ARRAY_SIZE; j++) {
-		aSumErr += abs(a[j] - aj);
-		bSumErr += abs(b[j] - bj);
-		cSumErr += abs(c[j] - cj);
-		// if (j == 417) printf("Index 417: c[j]: %f, cj: %f\n",c[j],cj);	// MCCALPIN
-	}
-	aAvgErr = aSumErr / (STREAM_TYPE) STREAM_ARRAY_SIZE;
-	bAvgErr = bSumErr / (STREAM_TYPE) STREAM_ARRAY_SIZE;
-	cAvgErr = cSumErr / (STREAM_TYPE) STREAM_ARRAY_SIZE;
+    a1SumErr = 0.0;
+    a2SumErr = 0.0;
 
-	if (sizeof(STREAM_TYPE) == 4) {
-		epsilon = 1.e-6;
-	}
-	else if (sizeof(STREAM_TYPE) == 8) {
-		epsilon = 1.e-13;
-	}
-	else {
-		printf("WEIRD: sizeof(STREAM_TYPE) = %lu\n",sizeof(STREAM_TYPE));
-		epsilon = 1.e-6;
-	}
+    b1SumErr = 0.0;
+    b2SumErr = 0.0;
 
-	err = 0;
-	if (abs(aAvgErr/aj) > epsilon) {
-		err++;
-		printf ("Failed Validation on array a[], AvgRelAbsErr > epsilon (%e)\n",epsilon);
-		printf ("     Expected Value: %e, AvgAbsErr: %e, AvgRelAbsErr: %e\n",aj,aAvgErr,abs(aAvgErr)/aj);
-		ierr = 0;
-		for (j=0; j<STREAM_ARRAY_SIZE; j++) {
-			if (abs(a[j]/aj-1.0) > epsilon) {
-				ierr++;
+    c1SumErr = 0.0;
+    c2SumErr = 0.0;
+    for (j = 0; j < stream_array_size; j++) {
+        a1SumErr += abs(a1[j] - a1j);
+        a2SumErr += abs(a2[j] - a2j);
+
+        b1SumErr += abs(b1[j] - b1j);
+        b2SumErr += abs(b2[j] - b2j);
+
+        c1SumErr += abs(c1[j] - c1j);
+        c2SumErr += abs(c2[j] - c2j);
+        // if (j == 417) printf("Index 417: c[j]: %f, cj: %f\n",c[j],cj);	//
+        // MCCALPIN
+    }
+    a1AvgErr = a1SumErr / (STREAM_TYPE)stream_array_size;
+    a2AvgErr = a2SumErr / (STREAM_TYPE)stream_array_size;
+
+    b1AvgErr = b1SumErr / (STREAM_TYPE)stream_array_size;
+    b2AvgErr = b2SumErr / (STREAM_TYPE)stream_array_size;
+
+    c1AvgErr = c1SumErr / (STREAM_TYPE)stream_array_size;
+    c2AvgErr = c2SumErr / (STREAM_TYPE)stream_array_size;
+
+    if (sizeof(STREAM_TYPE) == 4) {
+        epsilon = 1.e-6;
+    } else if (sizeof(STREAM_TYPE) == 8) {
+        epsilon = 1.e-13;
+    } else {
+        printf("WEIRD: sizeof(STREAM_TYPE) = %lu\n", sizeof(STREAM_TYPE));
+        epsilon = 1.e-6;
+    }
+
+    int err = 0;
+    int ierr = 0;
+    upperbound_errors(&err, &ierr, epsilon, a1, a1j, a1AvgErr, "a1");
+    upperbound_errors(&err, &ierr, epsilon, a2, a2j, a2AvgErr, "a2");
+
+    upperbound_errors(&err, &ierr, epsilon, b1, b1j, b1AvgErr, "b1");
+    upperbound_errors(&err, &ierr, epsilon, b2, b2j, b2AvgErr, "b2");
+
+    upperbound_errors(&err, &ierr, epsilon, c1, c1j, c1AvgErr, "c1");
+    upperbound_errors(&err, &ierr, epsilon, c2, c2j, c2AvgErr, "c2");
+
+    if (err == 0) {
+        printf("Solution Validates: avg error less than %e on all three arrays\n",
+               epsilon);
+    }
+
 #ifdef VERBOSE
-				if (ierr < 10) {
-					printf("         array a: index: %ld, expected: %e, observed: %e, relative error: %e\n",
-						j,aj,a[j],abs((aj-a[j])/aAvgErr));
-				}
-#endif
-			}
-		}
-		printf("     For array a[], %d errors were found.\n",ierr);
-	}
-	if (abs(bAvgErr/bj) > epsilon) {
-		err++;
-		printf ("Failed Validation on array b[], AvgRelAbsErr > epsilon (%e)\n",epsilon);
-		printf ("     Expected Value: %e, AvgAbsErr: %e, AvgRelAbsErr: %e\n",bj,bAvgErr,abs(bAvgErr)/bj);
-		printf ("     AvgRelAbsErr > Epsilon (%e)\n",epsilon);
-		ierr = 0;
-		for (j=0; j<STREAM_ARRAY_SIZE; j++) {
-			if (abs(b[j]/bj-1.0) > epsilon) {
-				ierr++;
-#ifdef VERBOSE
-				if (ierr < 10) {
-					printf("         array b: index: %ld, expected: %e, observed: %e, relative error: %e\n",
-						j,bj,b[j],abs((bj-b[j])/bAvgErr));
-				}
-#endif
-			}
-		}
-		printf("     For array b[], %d errors were found.\n",ierr);
-	}
-	if (abs(cAvgErr/cj) > epsilon) {
-		err++;
-		printf ("Failed Validation on array c[], AvgRelAbsErr > epsilon (%e)\n",epsilon);
-		printf ("     Expected Value: %e, AvgAbsErr: %e, AvgRelAbsErr: %e\n",cj,cAvgErr,abs(cAvgErr)/cj);
-		printf ("     AvgRelAbsErr > Epsilon (%e)\n",epsilon);
-		ierr = 0;
-		for (j=0; j<STREAM_ARRAY_SIZE; j++) {
-			if (abs(c[j]/cj-1.0) > epsilon) {
-				ierr++;
-#ifdef VERBOSE
-				if (ierr < 10) {
-					printf("         array c: index: %ld, expected: %e, observed: %e, relative error: %e\n",
-						j,cj,c[j],abs((cj-c[j])/cAvgErr));
-				}
-#endif
-			}
-		}
-		printf("     For array c[], %d errors were found.\n",ierr);
-	}
-	if (err == 0) {
-		printf ("Solution Validates: avg error less than %e on all three arrays\n",epsilon);
-	}
-#ifdef VERBOSE
-	printf ("Results Validation Verbose Results: \n");
-	printf ("    Expected a(1), b(1), c(1): %f %f %f \n",aj,bj,cj);
-	printf ("    Observed a(1), b(1), c(1): %f %f %f \n",a[1],b[1],c[1]);
-	printf ("    Rel Errors on a, b, c:     %e %e %e \n",abs(aAvgErr/aj),abs(bAvgErr/bj),abs(cAvgErr/cj));
+    printf("Results Validation Verbose Results: \n");
+    printf("    Expected a1(1), a2(1), b1(1), b2(1), c1(1), c2(1): %f %f %f %f %f %f \n",
+           a1j, a2j, b1j, b2j, c1j, c2j);
+    printf("    Observed a1(1), a2(1), b1(1), b2(1), c1(1), c2(1): %f %f %f %f %f %f \n",
+           a1[1], a2[1], b1[1], b2[1], c1[1], c2[1]);
+    printf("    Rel Errors on a1, a2, b1, b2, c1, c2:     %e %e %e \n",
+           abs(a1AvgErr / a1j), abs(a2AvgErr / a2j), abs(b1AvgErr / b1j),
+           abs(b2AvgErr / b2j), abs(c1AvgErr / c1j), abs(c2AvgErr / c2j));
 #endif
 }
 
 #ifdef TUNED
 /* stubs for "tuned" versions of the kernels */
-void tuned_STREAM_Copy()
-{
-	ssize_t j;
+void tuned_STREAM_Copy(STREAM_TYPE *x, STREAM_TYPE *y) {
+    ssize_t j;
 #pragma omp parallel for
-        for (j=0; j<STREAM_ARRAY_SIZE; j++)
-            c[j] = a[j];
+    for (j = 0; j < stream_array_size; j++)
+        x[j] = y[j];
 }
 
-void tuned_STREAM_Scale(STREAM_TYPE scalar)
-{
-	ssize_t j;
+void tuned_STREAM_Scale(STREAM_TYPE scalar, STREAM_TYPE *x, STREAM_TYPE *y) {
+    ssize_t j;
 #pragma omp parallel for
-	for (j=0; j<STREAM_ARRAY_SIZE; j++)
-	    b[j] = scalar*c[j];
+    for (j = 0; j < stream_array_size; j++)
+        x[j] = scalar * y[j];
 }
 
-void tuned_STREAM_Add()
-{
-	ssize_t j;
+void tuned_STREAM_Add(STREAM_TYPE *x, STREAM_TYPE *y, STREAM_TYPE *z) {
+    ssize_t j;
 #pragma omp parallel for
-	for (j=0; j<STREAM_ARRAY_SIZE; j++)
-	    c[j] = a[j]+b[j];
+    for (j = 0; j < stream_array_size; j++)
+        x[j] = y[j] + z[j];
 }
 
-void tuned_STREAM_Triad(STREAM_TYPE scalar)
-{
-	ssize_t j;
+void tuned_STREAM_Triad(STREAM_TYPE scalar, STREAM_TYPE *x, STREAM_TYPE *y,
+                        STREAM_TYPE *z) {
+    ssize_t j;
+
 #pragma omp parallel for
-	for (j=0; j<STREAM_ARRAY_SIZE; j++)
-	    a[j] = b[j]+scalar*c[j];
+    for (j = 0; j < stream_array_size; j++)
+        x[j] = y[j] + scalar * z[j];
 }
 /* end of stubs for the "tuned" versions of the kernels */
 #endif
