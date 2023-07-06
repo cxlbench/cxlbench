@@ -1,4 +1,5 @@
 mlc
 mlc_injection.delay
 mlc_loaded_latency.input
-mlc.sh.*
+*mlc.sh.*
+*sysbench-tpcc.*

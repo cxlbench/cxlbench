@@ -1,0 +1,296 @@
+#!/usr/bin/env bash
+
+# Define string definitions based on whether colors are or are not supported by the terminal
+function setup_strings() {
+  if [[ "${TERMCOLORS}" = true ]]; then
+    STR_PASSED="${green}[ PASSED   ]${normal}"
+    STR_WARN="${yellow}[ WARNING  ]${normal}"
+    STR_FAIL="${red}[ FAILED   ]${normal}"
+    STR_INFO="${magenta}[ INFO     ]${normal}"
+    STR_DEBUG="${cyan}[ DEBUG    ]${normal}"
+    STR_CRIT="${red}[ CRITICAL ]${normal}"
+    STR_SKIPPED="${blue}[ SKIPPED  ]${normal}"
+    STR_UNKNOWN="${white}[ UNKNOWN  ]${normal}"
+    STR_ERROR="${red}[ ERROR    ]${normal}"
+  else
+    STR_PASSED="[ PASSED   ]"
+    STR_WARN="[ WARNING  ]"
+    STR_FAIL="[ FAILED   ]"
+    STR_INFO="[ INFO     ]"
+    STR_DEBUG="[ DEBUG    ]"
+    STR_CRIT="[ CRITICAL ]"
+    STR_SKIPPED="[ SKIPPED  ]"
+    STR_UNKNOWN="[ UNKNOWN  ]"
+    STR_ERROR="[ ERROR    ]"
+  fi
+}
+
+# Auto detect whether the users terminal supports colors
+# Sets TERMCOLORS to TRUE or FALSE
+function auto_detect_terminal_colors() {
+  # Verify STDOUT is a terminal
+  if [ -t 1 ]; then
+    # If the terminal supports colors, use them.
+    # Use the tput command if available. If not, fall back and manually assign colors.
+    if [ -z "${TPUT}" ]; then
+      # tput is not available. Manually assign colors
+      bold="\e[1m"
+      underline="\e[4"
+      normal="\e[0m"
+      black="\e[39m"
+      red="\e[31m"
+      green="\e[32m"
+      yellow="\e[33m"
+      blue="\e[34m"
+      magenta="\e[35m"
+      cyan="\e[36m"
+      white="\e[97m"
+      default_fg="\e[39m"
+      default_bg="\e[49m"
+    else 
+      # Use tput
+      if [[ $(${TPUT} colors) -ge 8 ]]; then
+        # Enable terminal colors
+        TERMCOLORS=true
+        # Define the color scheme using tput
+        bold="$(${TPUT} bold)"
+        underline="$(${TPUT} smul)"
+        standout="$(${TPUT} smso)"
+        normal="$(${TPUT} sgr0)" #reset foreground to default
+        black="$(${TPUT} setaf 0)"
+        red="$(${TPUT} setaf 1)"
+        green="$(${TPUT} setaf 2)"
+        yellow="$(${TPUT} setaf 3)"
+        blue="$(${TPUT} setaf 4)"
+        magenta="$(${TPUT} setaf 5)"
+        cyan="$(${TPUT} setaf 6)"
+        white="$(${TPUT} setaf 7)"
+      fi
+    fi 
+  else
+    # This isn't a terminal. Disable colors.
+    TERMCOLORS=false
+  fi 
+
+  # Call setup_strings to use color or no color
+  setup_strings
+}
+
+###############################################################################
+# Define the message type printing formats
+###############################################################################
+
+# Define the string printing formats
+
+_HDR_FMT="%s %s "
+_MSG_FMT="${_HDR_FMT} : %s\n"
+
+_DBG_HDR_FMT="%.23s %s%s "
+_DBG_MSG_FMT="${_DBG_HDR_FMT}%s\n"
+
+# Print INFO messages with the function name and optional string message
+# arg1 = Message string
+# arg2 = Indent size
+function info_msg() {
+  local indentstr=""
+  local icnt=${2}
+  local c
+ 
+  # If an indent size arg is provided, generate the string
+  if [[ -n "${icnt}" ]]; then 
+    # Verify it's a positive number
+    local re='^[0-9]+$'
+    if [[ "${icnt}" =~ $re ]] ; then
+      for (( c=1; c<=${icnt}; c++ )); do
+        indentstr+=" "
+      done
+    fi
+  fi
+
+  # Ensure we capture the rule function, not an intermediary calling function - rule_result()
+  if [[ "${FUNCNAME[1]}" == "rule_result" ]]; then 
+    echo "${indentstr}${STR_INFO} ${FUNCNAME[2]} : ${1}"
+  else 
+    echo "${indentstr}${STR_INFO} ${FUNCNAME[1]} : ${1}"
+  fi
+}
+
+# Print WARNING messages with the function name and optional string message
+function warn_msg() {
+  local indentstr=""
+  local icnt=${2}
+  local c
+
+  # If an indent size arg is provided, generate the string
+  if [[ -n "${icnt}" ]]; then
+    # Verify it's a positive number
+    local re='^[0-9]+$'
+    if [[ "${icnt}" =~ $re ]] ; then
+      for (( c=1; c<=${icnt}; c++ )); do
+        indentstr+=" "
+      done
+    fi
+  fi
+
+  # Ensure we capture the rule function, not an intermediary calling function - rule_result()
+  if [[ "${FUNCNAME[1]}" == "rule_result" ]]; then
+    echo "${indentstr}${STR_WARN} ${FUNCNAME[2]} : ${1}"
+  else
+    echo "${indentstr}${STR_WARN} ${FUNCNAME[1]} : ${1}"
+  fi
+}
+
+# Print CRITICAL messages with the function name and optional string message
+function crit_msg() {
+  local indentstr=""
+  local icnt=${2}
+  local c
+
+  # If an indent size arg is provided, generate the string
+  if [[ -n "${icnt}" ]]; then
+    # Verify it's a positive number
+    local re='^[0-9]+$'
+    if [[ "${icnt}" =~ $re ]] ; then
+      for (( c=1; c<=${icnt}; c++ )); do
+        indentstr+=" "
+      done
+    fi
+  fi
+
+  # Ensure we capture the rule function, not an intermediary calling function - rule_result()
+  if [[ "${FUNCNAME[1]}" == "rule_result" ]]; then
+    echo "${indentstr}${STR_CRIT} ${FUNCNAME[2]} : ${1}"
+  else
+    echo "${indentstr}${STR_CRIT} ${FUNCNAME[1]} : ${1}"
+  fi
+}
+
+# Print SKIPPED messages with the function name and optional string message
+function skipped_msg() {
+  local indentstr=""
+  local icnt=${2}
+  local c
+
+  # If an indent size arg is provided, generate the string
+  if [[ -n "${icnt}" ]]; then
+    # Verify it's a positive number
+    local re='^[0-9]+$'
+    if [[ "${icnt}" =~ $re ]] ; then
+      for (( c=1; c<=${icnt}; c++ )); do
+        indentstr+=" "
+      done
+    fi
+  fi
+
+  # Ensure we capture the rule function, not an intermediary calling function - rule_result()
+  if [[ "${FUNCNAME[1]}" == "rule_result" ]]; then
+    echo "${indentstr}${STR_SKIPPED} ${FUNCNAME[2]} : ${1}"
+  else
+    echo "${indentstr}${STR_SKIPPED} ${FUNCNAME[1]} : ${1}"
+  fi
+}
+
+# Print PASSED messages with the function name and optional string message
+function passed_msg() {
+  local indentstr=""
+  local icnt=${2}
+  local c
+
+  # If an indent size arg is provided, generate the string
+  if [[ -n "${icnt}" ]]; then
+    # Verify it's a positive number
+    local re='^[0-9]+$'
+    if [[ "${icnt}" =~ $re ]] ; then
+      for (( c=1; c<=${icnt}; c++ )); do
+        indentstr+=" "
+      done
+    fi
+  fi
+
+  # Ensure we capture the rule function, not an intermediary calling function - rule_result()
+  if [[ "${FUNCNAME[1]}" == "rule_result" ]]; then
+    echo "${indentstr}${STR_PASSED} ${FUNCNAME[2]} : ${1}"
+  else
+    echo "${indentstr}${STR_PASSED} ${FUNCNAME[1]} : ${1}"
+  fi
+}
+
+# Print FAILED messages with the function name and optional string message
+function failed_msg() {
+  local indentstr=""
+  local icnt=${2}
+  local c
+
+  # If an indent size arg is provided, generate the string
+  if [[ -n "${icnt}" ]]; then
+    # Verify it's a positive number
+    local re='^[0-9]+$'
+    if [[ "${icnt}" =~ $re ]] ; then
+      for (( c=1; c<=${icnt}; c++ )); do
+        indentstr+=" "
+      done
+    fi
+  fi
+
+  # Ensure we capture the rule function, not an intermediary calling function - rule_result()
+  if [[ "${FUNCNAME[1]}" == "rule_result" ]]; then
+    echo "${indentstr}${STR_FAIL} ${FUNCNAME[2]} : ${1}"
+  else
+    echo "${indentstr}${STR_FAIL} ${FUNCNAME[1]} : ${1}"
+  fi
+}
+
+# Print UNKNOWN messages with the function name and optional string message
+function unknown_msg() {
+  local indentstr=""
+  local icnt=${2}
+  local c
+
+  # If an indent size arg is provided, generate the string
+  if [[ -n "${icnt}" ]]; then
+    # Verify it's a positive number
+    local re='^[0-9]+$'
+    if [[ "${icnt}" =~ $re ]] ; then
+      for (( c=1; c<=${icnt}; c++ )); do
+        indentstr+=" "
+      done
+    fi
+  fi
+
+  # Ensure we capture the rule function, not an intermediary calling function - rule_result()
+  if [[ "${FUNCNAME[1]}" == "rule_result" ]]; then
+    echo "${indentstr}${STR_UNKNOWN} ${FUNCNAME[2]} : ${1}"
+  else
+    echo "${indentstr}${STR_UNKNOWN} ${FUNCNAME[1]} : ${1}"
+  fi
+}
+
+# Print ERROR messages with the function name and optional string message
+function error_msg() {
+  local indentstr=""
+  local icnt=${2}
+  local c
+
+  # If an indent size arg is provided, generate the string
+  if [[ -n "${icnt}" ]]; then
+    # Verify it's a positive number
+    local re='^[0-9]+$'
+    if [[ "${icnt}" =~ $re ]] ; then
+      for (( c=1; c<=${icnt}; c++ )); do
+        indentstr+=" "
+      done
+    fi
+  fi
+
+  # Ensure we capture the rule function, not an intermediary calling function - rule_result()
+  if [[ "${FUNCNAME[1]}" == "rule_result" ]]; then
+    echo "${indentstr}${STR_ERROR} ${FUNCNAME[2]} : ${1}"
+  else
+    echo "${indentstr}${STR_ERROR} ${FUNCNAME[1]} : ${1}"
+  fi
+}
+
+# Print Debug messages with date/time, function name, line number, and optional string message
+function debug_msg() {
+  printf "$_DBG_MSG_FMT" $(date +%F.%T.%N) ${STR_DEBUG} ${BASH_SOURCE[1]##*/}:${FUNCNAME[1]}[${BASH_LINENO[0]}] "${@}"
+}

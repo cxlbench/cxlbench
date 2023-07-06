@@ -67,11 +67,15 @@ function ctrl_c() {
 }
 
 # Display test start information
+# arg1: The command arguments for the script. Pass to this function using 'display_start_info $@'
 function display_start_info() {
   START_TIME=$(date +%s)
   echo "======================================================================="
   echo "Starting ${SCRIPT_NAME}"
   echo "${SCRIPT_NAME} Version ${VERSION}"
+  if [[ -n "$1" ]]; then
+    echo "${SCRIPT_NAME} $1"
+  fi
   echo "Started: $(date --date @${START_TIME})"
   echo "======================================================================="
 }
@@ -748,7 +752,7 @@ init_outputs
 log_stdout_stderr "${OUTPUT_PATH}"
 
 # Display the header information
-display_start_info
+display_start_info "$*"
 
 check_cpus
 get_cpu_socket_count
