@@ -41,6 +41,8 @@
 /*  5. Absolutely no warranty is expressed or implied.                   */
 /*-----------------------------------------------------------------------*/
 #include <ctype.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <float.h>
 #include <getopt.h>
 #include <limits.h>
@@ -138,9 +140,10 @@ static uint16_t offset = 0;
  *
  *	4) Optional: Mail the results to mccalpin@cs.virginia.edu
  *	   Be sure to include info that will help me understand:
- *		a) the computer hardware configuration (e.g., processor model, memory
- *type) b) the compiler name/version and compilation flags c) any run-time information
- *(such as OMP_NUM_THREADS) d) all of the output from the test case.
+ *		a) the computer hardware configuration (e.g., processor model,
+ *          memory type)
+ *      b) the compiler name/version and compilation flags c) any run-time information
+ *          (such as OMP_NUM_THREADS) d) all of the output from the test case.
  *
  * Thanks!
  *
@@ -176,6 +179,7 @@ extern double mysecond();
 extern void checkSTREAMresults();
 extern uint64_t convert_array_size(char *);
 extern uint64_t *parse_cli_args(int, char **, uint64_t *);
+void parse_numa_from_cli(uint64_t **, char *);
 extern void upperbound_errors(int *, int *, double, STREAM_TYPE *, STREAM_TYPE,
                               STREAM_TYPE, char *);
 #ifdef TUNED
@@ -468,15 +472,34 @@ static char *HELP[] = {
     "--array-size <integer-value>|<integer-value><K|M|G>   Default value 1000000",
     "--offset <integer-value>                              Default value 0",
     "--numa-nodes <integer>,<integer>",
-    // "--auto-array-size",
+    "--auto-array-size",
     "--help"};
 
-static struct option long_options[5] = {{"ntimes", optional_argument, 0, 't'},
-                                        {"array-size", optional_argument, 0, 'a'},
-                                        {"offset", optional_argument, 0, 'o'},
-                                        {"numa-nodes", required_argument, 0, 'n'},
-                                        // {"auto-array-size", no_argument, 0, 's'},
-                                        {"help", no_argument, 0, 'h'}};
+static struct option long_options[6] = {
+    {"ntimes", optional_argument, 0, 't'},    {"array-size", optional_argument, 0, 'a'},
+    {"offset", optional_argument, 0, 'o'},    {"numa-nodes", required_argument, 0, 'n'},
+    {"auto-array-size", no_argument, 0, 's'}, {"help", no_argument, 0, 'h'}};
+
+void parse_numa_from_cli(uint64_t **numa_nodes, char *arg) {
+    if (strchr(arg, ',') == NULL) {
+        *numa_nodes[0] = atoll(arg);
+    } else {
+        char *s1 = strdup(arg);
+        char *s0 = strsep(&s1, ",");
+
+        *numa_nodes[0] = atoll(s0);
+        *numa_nodes[1] = atoll(s1);
+
+        free(s0);
+    }
+}
+
+uint64_t calculate_array_size() {
+    // `_SC_LEVEL3_CACHE_SIZE` is used instead of sysfs's `size` for more precision.
+    uint64_t size = sysconf(_SC_LEVEL3_CACHE_SIZE) / 2;
+
+    return size;
+}
 
 uint64_t *parse_cli_args(int argc, char **argv, uint64_t *numa_nodes) {
     int c;
@@ -513,22 +536,13 @@ uint64_t *parse_cli_args(int argc, char **argv, uint64_t *numa_nodes) {
             break;
         case 'n':
             if (optarg) {
-                if (strchr(optarg, ',') == NULL) {
-                    numa_nodes[0] = atoi(optarg);
+                parse_numa_from_cli(&numa_nodes, optarg);
 
-                    found_numa = 1;
-                } else {
-                    char *s1 = strdup(optarg);
-                    char *s0 = strsep(&s1, ",");
-
-                    numa_nodes[0] = atoi(s0);
-                    numa_nodes[1] = atoi(s1);
-
-                    free(s0);
-
-                    found_numa = 1;
-                }
+                found_numa = 1;
             }
+            break;
+        case 's':
+            stream_array_size = calculate_array_size();
             break;
         case 'h':
             printf("Stream Benchmark CLI Help\n\n");

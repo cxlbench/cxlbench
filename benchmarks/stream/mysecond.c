@@ -1,7 +1,7 @@
 /* A gettimeofday routine to give access to the wall
    clock timer on most UNIX-like systems.
 
-   This version defines two entry points -- with 
+   This version defines two entry points -- with
    and without appended underscores, so it *should*
    automagically link with FORTRAN */
 
@@ -17,11 +17,9 @@ struct timezone { int   tz_minuteswest;
 
         struct timeval tp;
         struct timezone tzp;
-        int i;
 
-        i = gettimeofday(&tp,&tzp);
+        gettimeofday(&tp,&tzp);
         return ( (double) tp.tv_sec + (double) tp.tv_usec * 1.e-6 );
 }
 
 double mysecond_() {return mysecond();}
-
