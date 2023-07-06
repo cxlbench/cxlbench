@@ -4,8 +4,6 @@ This modified version of the STREAM benchmarking tool measures the memory bandwi
 
 # Setup
 
-This benchmarking tool for measuring memory bandwidth requires  for the `numactl` command along with the `numa.h` header.
-
 The `numactl` command and `numa.h` header are required for this benchmark to run. The Debian verison of the package that provides both is [`libnuma-dev`](https://manpages.debian.org/buster/libnuma-dev/numa.3.en.html).
 
 # Usage
