@@ -1,3 +1,0 @@
-#!/usr/bin/env
-
-sudo dmidecode -t bios
