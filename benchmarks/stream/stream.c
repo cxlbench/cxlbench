@@ -179,7 +179,7 @@ extern double mysecond();
 extern void checkSTREAMresults();
 extern uint64_t convert_array_size(char *);
 extern uint64_t *parse_cli_args(int, char **, uint64_t *);
-void parse_numa_from_cli(uint64_t **, char *);
+extern void parse_numa_from_cli(uint64_t *, char *);
 extern void upperbound_errors(int *, int *, double, STREAM_TYPE *, STREAM_TYPE,
                               STREAM_TYPE, char *);
 #ifdef TUNED
@@ -480,15 +480,15 @@ static struct option long_options[6] = {
     {"offset", optional_argument, 0, 'o'},    {"numa-nodes", required_argument, 0, 'n'},
     {"auto-array-size", no_argument, 0, 's'}, {"help", no_argument, 0, 'h'}};
 
-void parse_numa_from_cli(uint64_t **numa_nodes, char *arg) {
+void parse_numa_from_cli(uint64_t *numa_nodes, char *arg) {
     if (strchr(arg, ',') == NULL) {
-        *numa_nodes[0] = atoll(arg);
+        numa_nodes[0] = atoll(arg);
     } else {
         char *s1 = strdup(arg);
         char *s0 = strsep(&s1, ",");
 
-        *numa_nodes[0] = atoll(s0);
-        *numa_nodes[1] = atoll(s1);
+        numa_nodes[0] = atoll(s0);
+        numa_nodes[1] = atoll(s1);
 
         free(s0);
     }
@@ -536,7 +536,7 @@ uint64_t *parse_cli_args(int argc, char **argv, uint64_t *numa_nodes) {
             break;
         case 'n':
             if (optarg) {
-                parse_numa_from_cli(&numa_nodes, optarg);
+                parse_numa_from_cli(numa_nodes, optarg);
 
                 found_numa = 1;
             }
