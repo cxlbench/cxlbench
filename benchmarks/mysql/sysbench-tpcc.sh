@@ -554,6 +554,15 @@ function prepare_the_database()
     info_msg "Preparing the database(s). This will take some time. Please be patient..."
     for i in $(seq 1 ${PM_INSTANCES});
     do
+        # Temporarily disable the REDO Log for the prepare to speed up the inserttion of data
+        if podman exec -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD}" -i mysql${i} mysql -uroot -e "ALTER INSTANCE DISABLE INNODB REDO_LOG;" > /dev/null 2> "${OUTPUT_PATH}/podman_exec_disable_innodb_redo_log.err"
+        then
+            info_msg "Successfully disabled the REDO LOG"
+        else
+            # This is not fatal, but report it.
+            warn_msg "Failed to disable the REDO LOG. See '${OUTPUT_PATH}/podman_exec_disable_innodb_redo_log.err' for more information."
+        fi
+
         info_msg " ... Preparing database on mysql${i} ..."
         SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/4/" | sed "s/RUNTIME/60/" )
 
@@ -576,6 +585,19 @@ function prepare_the_database()
     done
 
     kill $spin_pid 
+
+    # Enable the REDO LOG
+    for i in $(seq 1 ${PM_INSTANCES});
+    do
+        # Temporarily disable the REDO Log for the prepare to speed up the inserttion of data
+        if podman exec -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD}" -i mysql${i} mysql -uroot -e "ALTER INSTANCE ENABLE INNODB REDO_LOG;" > /dev/null 2> "${OUTPUT_PATH}/podman_exec_enable_innodb_redo_log.err"
+        then
+            info_msg "Successfully enabled the REDO LOG"
+        else
+            # This is not fatal, but report it.
+            warn_msg "Failed to enable the REDO LOG. See '${OUTPUT_PATH}/podman_exec_enable_innodb_redo_log.err' for more information."
+        fi
+    done
 
     # Calculate the time to prepare the database
     duration=$(calc_time_duration ${start_time})
