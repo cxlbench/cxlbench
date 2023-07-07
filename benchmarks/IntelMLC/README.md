@@ -69,22 +69,25 @@ RHEL/Fedora/CentOS: $ sudo dnf install pythong3 pip
 // Install the requirements for the parsing scripts
 $ pip install -r requirements.txt
 
+// Change to a data directory
+$ cd <data directory>
+
 // Generate the Excel Document
 // usage: gen_excel.py [-h] Directory ExcelFile
 // Inside a data directory, run:
-$ python3 ../utils/gen_excel.py . mlc.results.xlsx
+$ ../utils/gen_excel.py . mlc.results.xlsx
 
 // Generate the bandwidth and latency charts
 // usage: gen_plot.py [-h] -d DIRECTORY -r {w21,w23,w27} -t {seq,rand}
 // Inside a results directory, run:
-$ python3 ../utils/gen_plot.py -d . -r w21 -t seq
-$ python3 ../utils/gen_plot.py -d . -r w21 -t rand
+$ ../utils/gen_plot.py -d . -r w21 -t seq
+$ ../utils/gen_plot.py -d . -r w21 -t rand
 
-$ python3 ../utils/gen_plot.py -d . -r w23 -t seq
-$ python3 ../utils/gen_plot.py -d . -r w21 -t rand
+$ ../utils/gen_plot.py -d . -r w23 -t seq
+$ ../utils/gen_plot.py -d . -r w21 -t rand
 
-$ python3 ../utils/gen_plot.py -d . -r w27 -t seq
-$ python3 ../utils/gen_plot.py -d . -r w27 -t seq
+$ ../utils/gen_plot.py -d . -r w27 -t seq
+$ ../utils/gen_plot.py -d . -r w27 -t seq
 ```
 
 ## Troubleshooting
@@ -130,7 +133,7 @@ RANGE                                  SIZE   STATE REMOVABLE   BLOCK          Z
 0x0000000100000000-0x000000107fffffff   62G  online       yes    2-32         Normal    0
 0x0000001080000000-0x000000307fffffff  128G  online       yes   33-96         Normal    1
 0x0000003080000000-0x000000407fffffff   64G  online       yes  97-128         Normal    3
-0x0000004080000000-0x000000607fffffff  128G  online       yes 129-192         Normal    2 <<<
+0x0000004080000000-0x000000607fffffff  128G  online       yes 129-192         Normal    2
 0x0000006080000000-0x000000707fffffff   64G offline           193-224 Normal/Movable    4
 
 Memory block size:         2G
