@@ -178,6 +178,8 @@ static const int TIMES_LEN = 8;
 extern double mysecond();
 extern void checkSTREAMresults();
 extern uint64_t convert_array_size(char *);
+extern void output_help();
+extern uint64_t calculate_array_size();
 extern uint64_t *parse_cli_args(int, char **, uint64_t *);
 extern void parse_numa_from_cli(uint64_t *, char *);
 extern void upperbound_errors(int *, int *, double, STREAM_TYPE *, STREAM_TYPE,
@@ -466,14 +468,19 @@ int main(int argc, char **argv) {
     return 0;
 }
 
-static const int HELP_LEN = 5;
+static const int HELP_LEN = 6;
 static char *HELP[] = {
-    "--ntimes <integer-value>                              Default value 10",
-    "--array-size <integer-value>|<integer-value><K|M|G>   Default value 1000000",
-    "--offset <integer-value>                              Default value 0",
-    "--numa-nodes <integer>,<integer>",
-    "--auto-array-size",
-    "--help"};
+    "         --ntimes, -t <integer-value>                         : Number of times to "
+    "run benchmark: Default 10",
+    "     --array-size, -a <integer-value>|<integer-value><K|M|G>  : Size of numa node "
+    "arrays: Default 1000000",
+    "         --offset, -o <integer-value>                         : Change relative "
+    "alignment of arrays: Default 0",
+    "     --numa-nodes, -n <integer>,<integer>|<integer>           : [Required] Numa "
+    "node(s) to do calculations on",
+    "--auto-array-size, -s                                         : Array will be "
+    "socket's L3 cache divided by 2",
+    "           --help, -h                                         : Print this message"};
 
 static struct option long_options[6] = {
     {"ntimes", optional_argument, 0, 't'},    {"array-size", optional_argument, 0, 'a'},
@@ -492,6 +499,15 @@ void parse_numa_from_cli(uint64_t *numa_nodes, char *arg) {
 
         free(s0);
     }
+}
+
+void output_help() {
+    printf("STREAM Benchmark\n");
+    for (int i = 0; i < HELP_LEN; i++) {
+        printf("%s\n", HELP[i]);
+    }
+
+    exit(EXIT_SUCCESS);
 }
 
 uint64_t calculate_array_size() {
@@ -545,9 +561,7 @@ uint64_t *parse_cli_args(int argc, char **argv, uint64_t *numa_nodes) {
             stream_array_size = calculate_array_size();
             break;
         case 'h':
-            printf("Stream Benchmark CLI Help\n\n");
-            for (int i = 0; i < HELP_LEN; i++)
-                printf("%s\n", HELP[i]);
+            output_help();
             break;
         default:
             break;

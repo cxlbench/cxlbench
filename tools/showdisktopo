@@ -1,0 +1,3 @@
+#!/usr/bin/env bash 
+
+lsblk -o NAME,SIZE,TYPE,MOUNTPOINTS,MODEL,VENDOR
