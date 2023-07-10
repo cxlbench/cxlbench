@@ -35,7 +35,7 @@ PM_INSTANCES=1                  # Number of podman instances to start
 # === MySQL Variables ===
 
 MYSQL_ROOT_PASSWORD=my-secret-pw                        # Root Users Password
-MYSQL_START_PORT=3333                                   # Host Port number for the first instance. Additional instances will increment by 1 for each instance 3306..3307..3308..    
+MYSQL_START_PORT=3333                                   # Host Port number for the first instance. Additional instances will increment by 1 for each instance 3306..3307..3308..
 MYSQL_DATA_DIR=/data                                    # Base directory for the MySQL Data Directory on the host
 MYSQL_CONF=${SCRIPT_DIR}/my.cnf.d/my.cnf                # Location of the my.cnf file(s)
 MySQLDockerImgTag="docker.io/library/mysql:latest"      # MySQL Version. Get the Docker Tag ID from https://hub.docker.com/_/mysql
@@ -45,7 +45,7 @@ MySQLDockerImgTag="docker.io/library/mysql:latest"      # MySQL Version. Get the
 
 # Sysbench username and password
 SYSBENCH_USER="sbuser"
-SYSBENCH_USER_PASSWORD="sbuser-pwd" 
+SYSBENCH_USER_PASSWORD="sbuser-pwd"
 SCALE=10                                    # Default number of warehouses. Use -s to override
 TABLES=10                                   # Default number of tables per warehouse. Use -t to override
 SYSBENCH_WARMTIME=300                       # Duration (seconds) to warm the database before running tests
@@ -71,7 +71,7 @@ function goto() {
 
 function init() {
     # Create the output directory
-    init_outputs                    
+    init_outputs
 }
 
 # Verify the required commands and utilities exist on the system
@@ -158,10 +158,10 @@ function dstat_find_location_of_db()
     if [ -z "${DATADISK}" ]; then
         error_msg "The data disk for '${MYSQL_DATA_DIR}' could not be found."
         return 1
-    else 
+    else
         return 0
     fi
-}   
+}
 
 # From the Experiment (-e) argument, determine what numactl options to use
 # args: none
@@ -200,7 +200,7 @@ function create_network()
 }
 
 # Create a custom sysbench + mysql-client container image using a multi stage Dockerfile
-# We must compile sysbench from source code to get the '--warmup' option. 
+# We must compile sysbench from source code to get the '--warmup' option.
 # The release builds do not support the warmup feature.
 # args: none
 # return: 0=success, 1=error
@@ -315,7 +315,7 @@ EOF
 function start_mysql_containers()
 {
     local err_state=false
-    
+
     MYSQL_PORT=${MYSQL_START_PORT}
     for i in $(seq 1 ${PM_INSTANCES});
     do
@@ -330,7 +330,7 @@ function start_mysql_containers()
                 error_msg "Failed to create ${MYSQL_DATA_DIR}/mysql${i}"
                 return 1
             fi
-            
+
             # Give all permisions on the data directory
             if ! chmod 777 ${MYSQL_DATA_DIR}/mysql${i}
             then
@@ -352,7 +352,7 @@ function start_mysql_containers()
                         --network ${NETWORK_NAME}                       \
                         --cpus=${SERVER_CPU_LIMIT}                      \
                         --memory=${SERVER_MEMORY_LIMIT}                 \
-                        ${MySQLDockerImgTag} > /dev/null 2> ${OUTPUT_PATH}/podman_create_mysql{$i}.err
+                        ${MySQLDockerImgTag} > /dev/null 2> ${OUTPUT_PATH}/podman_create_mysql${i}.err
             if [ "$?" -ne "0" ];
             then
                 echo ""
@@ -371,7 +371,7 @@ function start_mysql_containers()
                 error_msg "Container 'mysql${i}' failed to start. Check 'podman logs mysq${i}'"
                 err_state=true
             fi
-        else 
+        else
             info_msg "MySQL container 'mysql${i}' is already running."
         fi
 
@@ -397,7 +397,7 @@ function start_mysql_containers()
 # Start the Sysbench container(s) under numactl control
 # args: none
 # return: 0=success, 1=error
-function start_sysbench_containers() 
+function start_sysbench_containers()
 {
     local err_state=false
 
@@ -406,7 +406,7 @@ function start_sysbench_containers()
         # ========== SYSBENCH ==========
 
         info_msg "Starting Sysbench container 'sysbench${i}'..."
-    
+
         # Set the host in the SYSBENCH_OPTS
         # Check and see of we need to pass in SYSBENCH_OPTS to this set up
         SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/4/" | sed "s/RUNTIME/60/" )
@@ -436,7 +436,7 @@ function start_sysbench_containers()
             fi
         else
             info_msg "SysBench container 'sysbench${i}' is already running."
-        fi  
+        fi
 
         # Wait for the container to start
         info_msg "Waiting for container 'sysbench${i}' to start..."
@@ -460,7 +460,7 @@ function start_sysbench_containers()
 # return: none
 function pause_for_stability()
 {
-    local seconds 
+    local seconds
 
     seconds=30
     total_seconds=$seconds
@@ -542,7 +542,7 @@ function prepare_the_database()
     local err_state=false
     local duration          # Time taken to complete this task
     local start_time        # Start time in epoch seconds
-    
+
     if [ -z ${PREPARE_DB} ];
     then
         return 0
@@ -572,7 +572,7 @@ function prepare_the_database()
 
     spin "${pids[@]}" &
     spin_pid=$!
-    wait "${pids[@]}" 
+    wait "${pids[@]}"
 
     # Check the exit status of the tpcc.lua prepare command
     for pid in "${pids[@]}"; do
@@ -584,7 +584,7 @@ function prepare_the_database()
         fi
     done
 
-    kill $spin_pid 
+    kill $spin_pid
 
     # Enable the REDO LOG
     for i in $(seq 1 ${PM_INSTANCES});
@@ -640,8 +640,8 @@ function warm_the_database()
     done
 
     spin "${pids[@]}" &
-    spin_pid=$! 
-    wait "${pids[@]}" 
+    spin_pid=$!
+    wait "${pids[@]}"
 
     # Check the exit status of the tpcc.lua run command
     for pid in "${pids[@]}"; do
@@ -654,7 +654,7 @@ function warm_the_database()
         fi
     done
 
-    kill $spin_pid 
+    kill $spin_pid
 
     # Calculate the time to warmup the database
     duration=$(calc_time_duration ${start_time})
@@ -869,7 +869,7 @@ function get_mysql_config() {
     done
 
     # Collect the on-disk size of the MYSQL_DATA_DIR subdirectories
-    # Chances are high that this du command will return 'permission denied' for some of the directories, so 
+    # Chances are high that this du command will return 'permission denied' for some of the directories, so
     #  we don't need to use the typical logic here, otherwise we mis-represent that data is captured, but other
     #  errors existed. Instead, redirect STDOUT to the file and STDERR to the error file.
     du -h --max-depth=1 "${MYSQL_DATA_DIR}" &> "${OUTPUT_PATH}/du_-h.mysql_data_dir.out"
@@ -928,7 +928,7 @@ function remove_containers()
     info_msg "Removing the MySQL containers..."
     for i in $(seq 1 ${PM_INSTANCES});
     do
-        # The sysbench containers are created on the fly, and are not retained after 
+        # The sysbench containers are created on the fly, and are not retained after
         # the have been killed
         if podman rm mysql${i} &> /dev/null
         then
@@ -950,12 +950,12 @@ function remove_containers()
 # args: none
 # return: 0=success, 1=error
 function check_cgroups() {
-    if [[ ! -f "/etc/systemd/system/user@.service.d/delegate.conf" ]]; then 
+    if [[ ! -f "/etc/systemd/system/user@.service.d/delegate.conf" ]]; then
         error_msg "The file '/etc/systemd/system/user@.service.d/delegate.conf' does not exist. Follow the procedure in the README.md for further instructions. Exiting"
         return 1
     fi
 
-    if ! grep "cpu" /etc/systemd/system/user@.service.d/delegate.conf &> /dev/null; then 
+    if ! grep "cpu" /etc/systemd/system/user@.service.d/delegate.conf &> /dev/null; then
         error_msg  "This user does not have CPU cgroup priviledges! Follow the procedure in the README.md for further instructions. Exiting"
         return 1
     fi
@@ -1013,7 +1013,7 @@ function calc_time_duration() {
     if [[ -z "${ETIME}" ]]; then
         ETIME=$(date +%s)
     fi
-    
+
     DURATION=$((${ETIME}-${STIME}))
 
     # Convert seconds to days, hours, minutes, and seconds.
@@ -1044,7 +1044,7 @@ function calc_time_duration() {
 }
 
 # Check if SELinux is installed and 'Enforcing' as this can cause the MySQL
-#   initialization script inside the docker container to fail with permission 
+#   initialization script inside the docker container to fail with permission
 #   errors. Warn the user and have them temporarily disable it for the purposes
 #   of benchmarking.
 function check_selinux_enforce() {
@@ -1129,7 +1129,7 @@ then
     print_usage
     echo "    One or both of -c or -r or -p options are needed to proceed"
     exit 1
-fi  
+fi
 
 if [[ ("$EXPERIMENT" != "tier" && "$EXPERIMENT" != "interleave" && "$EXPERIMENT" != "mm" && "$EXPERIMENT" != "dram") ]];
 then
@@ -1151,7 +1151,7 @@ then
     print_usage
     exit 1
 fi
- 
+
 
 if [[ ( ! -z ${RUN_TEST} && -z ${WARM_DB}) ]];
 then
