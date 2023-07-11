@@ -112,10 +112,9 @@ function verify_cmds() {
 function print_usage()
 {
     echo -e "${SCRIPT_NAME}: Usage"
-    echo "    ${SCRIPT_NAME} [-o output_prefix] [-p] [-r]"
+    echo "    ${SCRIPT_NAME} OPTIONS"
     echo "      -c                         : Cleanup. Completely remove all containers and the MySQL database"
     echo "      -C <numa_node>             : [Required] CPU NUMA Node to run the MySQLServer"
-    #echo "      -e dram|tier|interleave|mm : [Required] Type of experiment to run"
     echo "      -e dram|interleave         : [Required] Type of experiment to run"
     echo "      -i <number_of_instances>   : The number of container intances to execute: Default 1"
     echo "      -r                         : Run the Sysbench workload"
@@ -123,10 +122,10 @@ function print_usage()
     echo "      -M <numa_node,..>          : [Required] Memory NUMA Node to run the MySQLServer"
     echo "      -o <prefix>                : [Required] prefix of the output files: Default 'test'"
     echo "      -s <scale>                 : Number of warehouses (scale): Default 10"
-    echo "      -S <numa_node>             : [Required] NUMA Node to run the Sysbench workers"
+    echo "      -S <numa_node>             : [Required] CPU NUMA Node to run the Sysbench workers"
     echo "      -t <number_of_tables>      : The number of tables per warehouse: Default 10"
-    echo "      -T <run time>              : Number of seconds to 'run' the benchmark"
-    echo "      -w                         : Warm the database"
+    echo "      -T <run time>              : Number of seconds to 'run' the benchmark. Default ${SYSBENCH_RUNTIME}"
+    echo "      -w                         : Warm the database. Default False."
     echo "      -W <worker threads>        : Maximum number of Sysbench worker threads. Default 1"
     echo "      -h                         : Print this message"
     echo " "
@@ -580,7 +579,7 @@ function prepare_the_database()
         info_msg " ... Preparing database on mysql${i} ..."
         SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/4/" | sed "s/RUNTIME/60/" )
 
-        podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS prepare" &> ${OUTPUT_PATH}/${OUTPUT_PREFIX}_prepare.${i}.log &
+        podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS prepare" &> ${OUTPUT_PATH}/${OUTPUT_PREFIX}prepare.${i}.log &
         pids[${i}]=$!
     done
 
@@ -649,7 +648,7 @@ function warm_the_database()
     do
         info_msg " ... Warming database on mysql${i} ... "
         SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/4/" | sed "s/RUNTIME/${SYSBENCH_WARMTIME}/" )
-        podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS run" > ${OUTPUT_PATH}/${OUTPUT_PREFIX}_warmup.${i}.log &
+        podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS run" > ${OUTPUT_PATH}/${OUTPUT_PREFIX}warmup.${i}.log &
         pids[${i}]=$!
     done
 
@@ -742,8 +741,8 @@ function run_the_benchmark()
     for threads in $sequence
     do
         info_msg " ... Start run with parameters threads=${threads} runtime=${SYSBENCH_RUNTIME} tables=${TABLES} ... "
-        DSTATFILE=${OUTPUT_PATH}/${OUTPUT_PREFIX}_dstat-${threads}-threads.csv
-        PODMAN_STATS_OUTPUT_FILE=${OUTPUT_PATH}/${OUTPUT_PREFIX}_podman_stats-${threads}-threads.out
+        DSTATFILE=${OUTPUT_PATH}/${OUTPUT_PREFIX}dstat-${threads}-threads.csv
+        PODMAN_STATS_OUTPUT_FILE=${OUTPUT_PATH}/${OUTPUT_PREFIX}podman_stats-${threads}-threads.out
 
         # Remove a previous restult file if present
         rm -f ${DSTATFILE} &> /dev/null
@@ -760,7 +759,7 @@ function run_the_benchmark()
         do
             # Run the benchmark
             SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/${threads}/" | sed "s/RUNTIME/${SYSBENCH_RUNTIME}/" )
-            podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS run" &> ${OUTPUT_PATH}/${OUTPUT_PREFIX}_run_${threads}.${i}.log &
+            podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS run" &> ${OUTPUT_PATH}/${OUTPUT_PREFIX}run_${threads}.${i}.log &
             pids[${i}]=$!
         done
 
@@ -818,7 +817,7 @@ function cleanup_database()
     for i in $(seq 1 ${PM_INSTANCES});
     do
         SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/4/" | sed "s/RUNTIME/600/" )
-        podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS cleanup" &> ${OUTPUT_PATH}/${OUTPUT_PREFIX}_cleanup.${i}.log &
+        podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS cleanup" &> ${OUTPUT_PATH}/${OUTPUT_PREFIX}cleanup.${i}.log &
         # Check for failure here, bail out and clean up
         pids[${i}]=$!
     done
@@ -863,16 +862,16 @@ function get_container_logs() {
 
     for i in $(seq 1 ${PM_INSTANCES});
     do
-        if podman logs mysql${i} &> ${OUTPUT_PATH}/${OUTPUT_PREFIX}_mysql.${i}.log
+        if podman logs mysql${i} &> ${OUTPUT_PATH}/${OUTPUT_PREFIX}mysql.${i}.log
         then
-            info_msg "... Container 'mysql${i}' logs successfully written to '${OUTPUT_PATH}/${OUTPUT_PREFIX}_mysql.${i}.log'"
+            info_msg "... Container 'mysql${i}' logs successfully written to '${OUTPUT_PATH}/${OUTPUT_PREFIX}mysql.${i}.log'"
         else
             error_msg " ... Failed to collect the container logs for mysql${i}"
         fi
 
-        if podman logs sysbench${i} &> ${OUTPUT_PATH}/${OUTPUT_PREFIX}_sysbench.${i}.log
+        if podman logs sysbench${i} &> ${OUTPUT_PATH}/${OUTPUT_PREFIX}sysbench.${i}.log
         then
-            info_msg "... Container 'sysbench${i}' logs successfully written to '${OUTPUT_PATH}/${OUTPUT_PREFIX}_sysbench.${i}.log'"
+            info_msg "... Container 'sysbench${i}' logs successfully written to '${OUTPUT_PATH}/${OUTPUT_PREFIX}sysbench.${i}.log'"
         else
             error_msg " ... Failed to collect the container logs for sysbench${i}"
         fi
@@ -1213,12 +1212,16 @@ then
     warn_msg "Warmup (-w) was not specified for this run. Results may not be reproducible if the database was not warmed up before this run"
 fi
 
+# Check if the user provided a prefix/test name, and use it
 if [ -z ${OUTPUT_PREFIX} ];
 then
-    OUTPUT_PREFIX="test"
+    OUTPUT_PREFIX=""
+else 
+    # Set the OUTPUT_PREFIX for files
+    OUTPUT_PREFIX+="_"
+    # Set the OUTPUT_PATH
+    OUTPUT_PATH="./${OUTPUT_PREFIX}${SCRIPT_NAME}.`hostname`.`date +"%m%d-%H%M"`"
 fi
-
-
 
 # Verify the mandatory commands and utilities are installed. Exit on error.
 if ! verify_cmds
