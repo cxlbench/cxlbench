@@ -633,7 +633,7 @@ function warm_the_database()
     info_msg "Warming the database. This will take approximately ${SYSBENCH_WARMTIME} seconds. Please be patient..."
     for i in $(seq 1 ${PM_INSTANCES});
     do
-        info_msg " .... Warming database on mysql${i} ... "
+        info_msg " ... Warming database on mysql${i} ... "
         SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/4/" | sed "s/RUNTIME/${SYSBENCH_WARMTIME}/" )
         podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS run" > ${OUTPUT_PATH}/${OUTPUT_PREFIX}_warmup.${i}.log &
         pids[${i}]=$!
