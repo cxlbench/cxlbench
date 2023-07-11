@@ -1075,7 +1075,7 @@ then
 fi
 
 # Process the command line arguments
-while getopts 'cC:e:hi:M:o:prs:S:t:T:w' opt; do
+while getopts 'cC:e:?hi:M:o:prs:S:t:T:w' opt; do
     case "$opt" in
         c)
             CLEANUP=1
@@ -1117,7 +1117,7 @@ while getopts 'cC:e:hi:M:o:prs:S:t:T:w' opt; do
         w)
             WARM_DB=1
             ;;
-        ?|h)
+        h|\?|*)
             print_usage
             exit
             ;;
