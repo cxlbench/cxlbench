@@ -183,10 +183,10 @@ function set_numactl_options()
 # return: 0=success, 1=error
 function create_network()
 {
-    if ! podman network exists ${NETWORK_NAME}; then
+    if ! podman network exists ${NETWORK_NAME} &> /dev/null; then
         info_msg "Creating a new Podman network called '${NETWORK_NAME}'."
         # podman network create ${NETWORK_NAME}
-        if podman network create "${NETWORK_NAME}"; then
+        if podman network create "${NETWORK_NAME}" > /dev/null 2> "${OUTPUT_PATH}/podman_exec_create_network.err"; then
             info_msg "Network '${NETWORK_NAME}' created successfully"
             return 0
         else
