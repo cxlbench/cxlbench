@@ -54,6 +54,7 @@ SYSBENCH_CONTAINER_IMG_NAME="sysbenchmysql" # Sysbench container image name
 SysbenchDBName="sbtest"                     # Name of the MySQL Database to create and run Sysbench against
 # Sysbench options
 SYSBENCH_OPTS_TEMPLATE="--db-driver=mysql --mysql-db=${SysbenchDBName} --mysql-user=${SYSBENCH_USER} --mysql-password=${SYSBENCH_USER_PASSWORD} --mysql-host=mysqlINSTANCE --mysql-port=3306 --time=RUNTIME  --threads=THREADS --tables=TABLES --scale=SCALE"
+SYSBENCH_THREADS=1                          # Number of Sysbench workload generator threads. Use -W to override
 
 #################################################################################################
 # Functions
@@ -61,7 +62,7 @@ SYSBENCH_OPTS_TEMPLATE="--db-driver=mysql --mysql-db=${SysbenchDBName} --mysql-u
 
 # THis function will be called if a user sends a SIGINT (Ctrl-C)
 function ctrl_c() {
-  echo "INFO: Received CTRL+C - aborting"
+  info_msg "Received CTRL+C - aborting"
   stop_containers
   display_end_info
   exit 1
@@ -126,12 +127,14 @@ function print_usage()
     echo "      -t <number_of_tables>      : The number of tables per warehouse: Default 10"
     echo "      -T <run time>              : Number of seconds to 'run' the benchmark"
     echo "      -w                         : Warm the database"
+    echo "      -W <worker threads>        : Maximum number of Sysbench worker threads. Default 1"
     echo "      -h                         : Print this message"
     echo " "
     echo "Example 1: Runs a single MySQL server on NUMA 0 and a single SysBench instance on NUMA Node1, "
-    echo "  prepares the database, runs the benchmark, and removes the database and containers when complete."
+    echo "  prepares the database, runs the benchmark from 1..1000 threads in powers of two, "
+    echo "  and removes the database and containers when complete."
     echo " "
-    echo "    $ ./${SCRIPT_NAME} -c -C 0 -e dram -i 1 -r -p -M 0 -o test -S1 -t 10 -w"
+    echo "    $ ./${SCRIPT_NAME} -c -C 0 -e dram -i 1 -r -p -M 0 -o test -S1 -t 10 -w -W 1000"
     echo " "
     echo "Example 2: Created the MySQL and Sysbench containers, runs the MySQL container on NUMA Node 0, the "
     echo "  Sysbench container on NUMA Node 1, then prepares the database and exits. The containers are left running."
@@ -678,6 +681,35 @@ function warm_the_database()
     fi
 }
 
+# Uses the SYSBENCH_THREADS value (-W) to generate a sequence of threads to use
+# args: $1 = Maximum value in the sequence
+# return: array/list of integer values
+# Example:
+#     arg1 = 1024
+#     Returned sequence = "1 2 4 8 16 32 64 128 256 512 1024"
+generate_worker_thread_sequence() {
+    max_value=$1
+    seq=""
+
+    # If arg1 is not an integer value, or it has not been provided, return a sequence of "1",
+    #  otherwise return the sequence up to the max_value
+    if ! [[ $max_value =~ ^[0-9]+$ ]]; then
+        seq="1"
+    else
+        for ((i = 0; ; i++)); do
+        value=$((2 ** i))
+        if ((value > max_value)); then
+            seq+=" $max_value"
+            break
+        fi
+        seq+=" $value"
+        done
+    fi
+
+    # Return the generated sequence
+    echo "$seq"
+}
+
 # Run the 'tpcc.lua run' command inside the sysbench container
 # args: none
 # return: 0=success, 1=error
@@ -690,6 +722,8 @@ function run_the_benchmark()
     local err_state=false
     local duration          # Time taken to complete this task
     local start_time    # Start time in epoch seconds
+    local sequence      # Number of workers from 1 .. SYSBENCH_THREADS
+    local threads
 
     if [ -z ${RUN_TEST} ];
     then
@@ -701,21 +735,22 @@ function run_the_benchmark()
 
     start_time=$(date +%s)    # Start time in epoch seconds
 
-    # Initiate ramp up tests that start ever increasing number of clients
-    # Be careful not to exceed the CPU resources of the Sysbench container
-    # for threads in 1 2 4 8 16 32 64 128 150
-    for threads in 1 2 4 8 16 32 64 128 192 256 384 425 500 768 1000
+    # Initiate ramp up tests that start an increasing number of clients, e.g.:
+    # for threads in 1 2 4 8 16 32 64 128 192 256 384 425 500 768 1000
+    sequence=$(generate_worker_thread_sequence ${SYSBENCH_THREADS})
+
+    for threads in $sequence
     do
         info_msg " ... Start run with parameters threads=${threads} runtime=${SYSBENCH_RUNTIME} tables=${TABLES} ... "
         DSTATFILE=${OUTPUT_PATH}/${OUTPUT_PREFIX}_dstat-${threads}-threads.csv
         PODMAN_STATS_OUTPUT_FILE=${OUTPUT_PATH}/${OUTPUT_PREFIX}_podman_stats-${threads}-threads.out
 
         # Remove a previous restult file if present
-        rm -f ${DSTATFILE}
-        rm -f ${PODMAN_STATS_OUTPUT_FILE}
+        rm -f ${DSTATFILE} &> /dev/null
+        rm -f ${PODMAN_STATS_OUTPUT_FILE} &> /dev/null
 
         # Start the data collection
-        dstat -c -m -d -D ${DATADISK} --io --output ${DSTATFILE} > /dev/null &
+        dstat -c -m -d -D ${DATADISK} --io --output ${DSTATFILE} &> /dev/null &
         DSTAT_PID=$!
 
         podman stats --no-reset --format "table {{.Name}},{{.ID}},{{.CPUPerc}},{{.MemUsageBytes}},{{.MemPerc}},{{.NetIO}},{{.BlockIO}},{{.PIDS}}" &> ${PODMAN_STATS_OUTPUT_FILE=} &
@@ -1086,7 +1121,7 @@ then
 fi
 
 # Process the command line arguments
-while getopts 'cC:e:?hi:M:o:prs:S:t:T:w' opt; do
+while getopts 'cC:e:?hi:M:o:prs:S:t:T:wW:' opt; do
     case "$opt" in
         c)
             CLEANUP=1
@@ -1127,6 +1162,15 @@ while getopts 'cC:e:?hi:M:o:prs:S:t:T:w' opt; do
             ;;
         w)
             WARM_DB=1
+            ;;
+        W)
+            SYSBENCH_THREADS=${OPTARG}
+
+            # Validate SYSBENCH_THREADS is a valid integer
+            if ! [[ $SYSBENCH_THREADS =~ ^[1-9][0-9]*$ ]]; then
+                error_msg "Invalid value for '-W'. Please provide a valid integer value greater than or equal to 1."
+                exit 1
+            fi
             ;;
         h|\?|*)
             print_usage
@@ -1173,6 +1217,8 @@ if [ -z ${OUTPUT_PREFIX} ];
 then
     OUTPUT_PREFIX="test"
 fi
+
+
 
 # Verify the mandatory commands and utilities are installed. Exit on error.
 if ! verify_cmds
