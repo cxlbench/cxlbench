@@ -59,6 +59,17 @@ SYSBENCH_OPTS_TEMPLATE="--db-driver=mysql --mysql-db=${SysbenchDBName} --mysql-u
 # Functions
 #################################################################################################
 
+# THis function will be called if a user sends a SIGINT (Ctrl-C)
+function ctrl_c() {
+  echo "INFO: Received CTRL+C - aborting"
+  stop_containers
+  display_end_info
+  exit 1
+}
+
+# Handle Ctrl-C User Input
+trap ctrl_c SIGINT
+
 # Implementing 'goto' functionality
 # Usage: goto end
 # Labels/Tags are '# end: #', or '#end:#' or '# end: # This is a comment'
@@ -1075,7 +1086,7 @@ then
 fi
 
 # Process the command line arguments
-while getopts 'cC:e:hi:M:o:prs:S:t:T:w' opt; do
+while getopts 'cC:e:?hi:M:o:prs:S:t:T:w' opt; do
     case "$opt" in
         c)
             CLEANUP=1
@@ -1117,7 +1128,7 @@ while getopts 'cC:e:hi:M:o:prs:S:t:T:w' opt; do
         w)
             WARM_DB=1
             ;;
-        ?|h)
+        h|\?|*)
             print_usage
             exit
             ;;
