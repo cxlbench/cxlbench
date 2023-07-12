@@ -1125,6 +1125,9 @@ then
     exit 1
 fi
 
+# Detect Terminal Type and setup message formats
+auto_detect_terminal_colors
+
 # Process the command line arguments
 while getopts 'cC:e:?hi:M:o:prs:S:t:T:wW:' opt; do
     case "$opt" in
@@ -1186,7 +1189,7 @@ done
 if [[ ( -z ${RUN_TEST} && -z ${PREPARE_DB} && -z ${CLEANUP} && -z ${WARM_DB}) ]];
 then
     print_usage
-    echo "    One or both of -c or -r or -p options are needed to proceed"
+    error_msg "One or both of -c or -r or -p options are needed to proceed"
     exit 1
 fi
 
@@ -1205,7 +1208,7 @@ else
 
         # Check if the variable has two or more values separated by commas
         if [[ $NUM_NODE_COUNT -lt 2 ]]; then
-            error_msg "[ ERROR    ] Two or more NUMA node must be specified with (-M) with the '${MEM_ENVIRONMENT}' (-e) option"
+            error_msg "Two or more NUMA node must be specified with (-M) with the '${MEM_ENVIRONMENT}' (-e) option"
             print_usage
             exit 1
         fi
@@ -1252,9 +1255,6 @@ fi
 # Initialize the environment
 init
 
-# Detect Terminal Type
-auto_detect_terminal_colors
-
 # Save STDOUT and STDERR logs to the data collection directory
 log_stdout_stderr "${OUTPUT_PATH}"
 
@@ -1273,7 +1273,7 @@ for function in "${functions[@]}"; do
 
     # Check if an error occurred
     if [ $return_value -ne 0 ]; then
-        echo "An error occurred in $function. Exiting."
+        error_msg "An error occurred in '$function'. Exiting."
         goto out
     fi
 done
