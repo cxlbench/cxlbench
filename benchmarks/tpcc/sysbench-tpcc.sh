@@ -113,21 +113,21 @@ function print_usage()
 {
     echo -e "${SCRIPT_NAME}: Usage"
     echo "    ${SCRIPT_NAME} OPTIONS"
-    echo "      -c                         : Cleanup. Completely remove all containers and the MySQL database"
-    echo "      -C <numa_node>             : [Required] CPU NUMA Node to run the MySQLServer"
-    echo "      -e dram|interleave         : [Required] Type of experiment to run"
-    echo "      -i <number_of_instances>   : The number of container intances to execute: Default 1"
-    echo "      -r                         : Run the Sysbench workload"
-    echo "      -p                         : Prepare the database"
-    echo "      -M <numa_node,..>          : [Required] Memory NUMA Node to run the MySQLServer"
-    echo "      -o <prefix>                : [Required] prefix of the output files: Default 'test'"
-    echo "      -s <scale>                 : Number of warehouses (scale): Default 10"
-    echo "      -S <numa_node>             : [Required] CPU NUMA Node to run the Sysbench workers"
-    echo "      -t <number_of_tables>      : The number of tables per warehouse: Default 10"
-    echo "      -T <run time>              : Number of seconds to 'run' the benchmark. Default ${SYSBENCH_RUNTIME}"
-    echo "      -w                         : Warm the database. Default False."
-    echo "      -W <worker threads>        : Maximum number of Sysbench worker threads. Default 1"
-    echo "      -h                         : Print this message"
+    echo "      -c                                          : Cleanup. Completely remove all containers and the MySQL database"
+    echo "      -C <numa_node>                              : [Required] CPU NUMA Node to run the MySQLServer"
+    echo "      -e dram|cxl|numainterleave|numapreferred    : [Required] Memory environment"
+    echo "      -i <number_of_instances>                    : The number of container intances to execute: Default 1"
+    echo "      -r                                          : Run the Sysbench workload"
+    echo "      -p                                          : Prepare the database"
+    echo "      -M <numa_node,..>                           : [Required] Memory NUMA Node to run the MySQLServer"
+    echo "      -o <prefix>                                 : [Required] prefix of the output files: Default 'test'"
+    echo "      -s <scale>                                  : Number of warehouses (scale): Default 10"
+    echo "      -S <numa_node>                              : [Required] CPU NUMA Node to run the Sysbench workers"
+    echo "      -t <number_of_tables>                       : The number of tables per warehouse: Default 10"
+    echo "      -T <run time>                               : Number of seconds to 'run' the benchmark. Default ${SYSBENCH_RUNTIME}"
+    echo "      -w                                          : Warm the database. Default False."
+    echo "      -W <worker threads>                         : Maximum number of Sysbench worker threads. Default 1"
+    echo "      -h                                          : Print this message"
     echo " "
     echo "Example 1: Runs a single MySQL server on NUMA 0 and a single SysBench instance on NUMA Node1, "
     echo "  prepares the database, runs the benchmark from 1..1000 threads in powers of two, "
@@ -176,18 +176,21 @@ function dstat_find_location_of_db()
     fi
 }
 
-# From the Experiment (-e) argument, determine what numactl options to use
+# From the MEM_ENVIRONMENT (-e) argument, determine what numactl options to use
 # args: none
 # return: none
 function set_numactl_options()
 {
-    case "$EXPERIMENT" in
-        tier|mm|dram)
+    case "$MEM_ENVIRONMENT" in
+        dram|cxl|mm)
             NUMACTL_OPTION="--cpunodebind ${MYSQL_CPU_NUMA_NODE} --membind ${MYSQL_MEM_NUMA_NODE}"
-        ;;
-        interleave)
+            ;;
+        numapreferred)
+            NUMACTL_OPTION="--cpunodebind ${MYSQL_CPU_NUMA_NODE} --preferred ${MYSQL_MEM_NUMA_NODE}"
+            ;;
+        numainterleave)
             NUMACTL_OPTION="--cpunodebind ${MYSQL_CPU_NUMA_NODE} --interleave ${MYSQL_MEM_NUMA_NODE}"
-        ;;
+            ;;
     esac
 }
 
@@ -330,6 +333,9 @@ function start_mysql_containers()
     local err_state=false
 
     MYSQL_PORT=${MYSQL_START_PORT}
+
+    info_msg "MySQL Server containers will use memory NUMA Nodes '${MYSQL_MEM_NUMA_NODE}' with the '${MEM_ENVIRONMENT}' numa policy."
+
     for i in $(seq 1 ${PM_INSTANCES});
     do
 
@@ -1129,8 +1135,7 @@ while getopts 'cC:e:?hi:M:o:prs:S:t:T:wW:' opt; do
             MYSQL_CPU_NUMA_NODE=${OPTARG}
             ;;
         e)
-            # Experient values are dram|interleave|tier|mm
-            EXPERIMENT=${OPTARG}
+            MEM_ENVIRONMENT=${OPTARG}
             ;;
         i)
             PM_INSTANCES=${OPTARG}
@@ -1185,11 +1190,26 @@ then
     exit 1
 fi
 
-if [[ ("$EXPERIMENT" != "tier" && "$EXPERIMENT" != "interleave" && "$EXPERIMENT" != "mm" && "$EXPERIMENT" != "dram") ]];
+if [[ ("$MEM_ENVIRONMENT" != "numapreferred" && "$MEM_ENVIRONMENT" != "numainterleave" && "$MEM_ENVIRONMENT" != "mm" && "$MEM_ENVIRONMENT" != "dram" && "$MEM_ENVIRONMENT" != "cxl") ]];
 then
-    error_msg "-e must be specified"
+    error_msg "Unknown memory environment '${MEM_ENVIRONMENT}'"
     print_usage
     exit 1
+else
+    # Validate the user provided two or more NUMA nodes in the (-M) option for numactl options
+    if [[ ("$MEM_ENVIRONMENT" == "numapreferred" || "$MEM_ENVIRONMENT" == "numainterleave" ) ]];
+    then
+        # Count the number of values separated by commas
+        IFS=',' read -ra NUMA_NODES <<< "$MYSQL_MEM_NUMA_NODE"
+        NUM_NODE_COUNT=${#NUMA_NODES[@]}
+
+        # Check if the variable has two or more values separated by commas
+        if [[ $NUM_NODE_COUNT -lt 2 ]]; then
+            error_msg "[ ERROR    ] Two or more NUMA node must be specified with (-M) with the '${MEM_ENVIRONMENT}' (-e) option"
+            print_usage
+            exit 1
+        fi
+    fi
 fi
 
 if [[ ( -z ${MYSQL_CPU_NUMA_NODE} || -z ${MYSQL_MEM_NUMA_NODE}) ]];
