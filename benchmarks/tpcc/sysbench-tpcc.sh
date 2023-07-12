@@ -331,6 +331,8 @@ EOF
 function start_mysql_containers()
 {
     local err_state=false
+    local timeout_duration=120  # Set the timeout duration
+    local start_time
 
     MYSQL_PORT=${MYSQL_START_PORT}
 
@@ -375,7 +377,7 @@ function start_mysql_containers()
             if [ "$?" -ne "0" ];
             then
                 echo ""
-                failed_msg "[Creation of container mysql${i} failed. Exiting"
+                failed_msg "Creation of container mysql${i} failed. Exiting"
                 err_state=true
             fi
         fi
@@ -383,22 +385,31 @@ function start_mysql_containers()
         # Start the MySQL container on specific NUMA node if it's not already running
         if ! podman ps --format "{{.Names}}" | grep -q mysql${i} &> /dev/null; then
             info_msg "Starting MySQL container 'mysql${i}'..."
-            if numactl ${NUMACTL_OPTION} podman start mysql${i} &> /dev/null
+            if numactl ${NUMACTL_OPTION} podman start mysql${i} > /dev/null 2> ${OUTPUT_PATH}/podman_start_mysql${i}.err
             then
                 info_msg "Container 'mysql${i}' started successfully."
             else
-                error_msg "Container 'mysql${i}' failed to start. Check 'podman logs mysq${i}'"
+                error_msg "Container 'mysql${i}' failed to start. Check '${OUTPUT_PATH}/podman_start_mysql${i}.err'"
                 err_state=true
             fi
         else
             info_msg "MySQL container 'mysql${i}' is already running."
         fi
 
-        # Wait for the MySQL container to start
-        # TODO: Put a limit, otherwise, this could spin forever.
+        # Get the current time
+        start_time=$SECONDS
+
+        # Wait for the container to start
         info_msg "Waiting for container 'mysql${i}' to start..."
         while ! podman inspect -f '{{.State.Running}}' mysql${i} &> /dev/null; do
-            sleep 1
+            # Check if the timeout duration has been exceeded
+            current_time=$(($SECONDS - $start_time))
+            if [[ $current_time -gt $timeout_duration ]]; then
+                error_msg "Timeout: Container 'mysql${i}' did not start within 120 seconds."
+                break
+            fi
+
+            sleep 5
             echo -n "."
         done
 
@@ -419,6 +430,8 @@ function start_mysql_containers()
 function start_sysbench_containers()
 {
     local err_state=false
+    local timeout_duration=120  # Set the timeout duration
+    local start_time
 
     for i in $(seq 1 ${PM_INSTANCES});
     do
@@ -457,10 +470,20 @@ function start_sysbench_containers()
             info_msg "SysBench container 'sysbench${i}' is already running."
         fi
 
+        # Get the current time
+        start_time=$SECONDS
+
         # Wait for the container to start
         info_msg "Waiting for container 'sysbench${i}' to start..."
         while ! podman inspect -f '{{.State.Running}}' sysbench${i} &> /dev/null; do
-            sleep 1
+            # Check if the timeout duration has been exceeded
+            current_time=$(($SECONDS - $start_time))
+            if [[ $current_time -gt $timeout_duration ]]; then
+                error_msg "Timeout: Container 'sysbench${i}' did not start within 120 seconds."
+                break
+            fi
+
+            sleep 5
             echo -n "."
         done
 
