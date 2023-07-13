@@ -719,22 +719,21 @@ generate_worker_thread_sequence() {
     max_value=$1
     seq=""
 
-    # If arg1 is not an integer value, or it has not been provided, return a sequence of "1",
-    #  otherwise return the sequence up to the max_value
     if ! [[ $max_value =~ ^[0-9]+$ ]]; then
         seq="1"
     else
         for ((i = 0; ; i++)); do
-        value=$((2 ** i))
-        if ((value > max_value)); then
-            seq+=" $max_value"
-            break
-        fi
-        seq+=" $value"
+            value=$((2 ** i))
+            if ((value > max_value)); then
+                if ((value / 2 != max_value)); then
+                    seq+=" $max_value"
+                fi
+                break
+            fi
+            seq+=" $value"
         done
     fi
 
-    # Return the generated sequence
     echo "$seq"
 }
 
