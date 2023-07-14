@@ -32,15 +32,11 @@ def format_stream_output(
         WHITESPACE_REPLACE.split(str(x, "utf-8", "ignore")) for x in selected_output
     ]
 
-    for item in lst:
-        item[0] = item[0].removesuffix(":")
-
     lst[0].insert(0, "ArraySize")
-    for i in range(1, len(lst)):
-        lst[i].insert(0, array_size)
-
     lst[0].insert(0, "Threads")
     for i in range(1, len(lst)):
+        lst[i][0] = lst[i][0].removesuffix(":")
+        lst[i].insert(0, array_size)
         lst[i].insert(0, thread_count)
 
     return lst
