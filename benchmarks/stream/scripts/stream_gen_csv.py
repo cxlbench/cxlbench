@@ -1,6 +1,7 @@
 import argparse
 import subprocess
 import re
+import time
 
 ARRAY_SIZES: list[int] = [
     10_000_000,
@@ -12,13 +13,7 @@ ARRAY_SIZES: list[int] = [
     430_080_000,
 ]
 
-THREADS: list[int] = [
-    4,
-    8,
-    16,
-    32,
-    64
-]
+THREADS: list[int] = [4, 8, 16, 32, 64]
 
 WHITESPACE_REPLACE = re.compile(r"\s+")
 
@@ -93,9 +88,13 @@ def main() -> None:
                 f"--numa-nodes {args.numa_nodes} --array-size {array_size}"
             )
 
+            start = time.time()
             cmd_stdout = run_cmd(cmd)
             formatted = format_stream_output(cmd_stdout, threads, array_size)
             lst.extend(formatted)
+            end = time.time()
+            elapsed = round(end - start, 3)
+            print(f"Done in {elapsed}s : {threads} threads, {array_size} array size")
 
     header = lst[0]
     filtered = list(filter(lambda x: x != header, lst))
