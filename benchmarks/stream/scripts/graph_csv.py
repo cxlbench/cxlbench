@@ -1,5 +1,6 @@
 import pandas as pd
 import matplotlib.pyplot as plt
+import sys
 
 def extract_excel_data(excel_file: str, sheet: str) -> pd.DataFrame:
     df = (
@@ -51,4 +52,4 @@ def main(excel_file: str) -> None:
 
 
 if __name__ == "__main__":
-    main(excel_file="sr3STREAMtestingDRAMONLY.xlsx")
+    main(sys.argv[1])
