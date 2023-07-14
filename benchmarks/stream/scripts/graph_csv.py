@@ -1,6 +1,5 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-from functools import reduce
 
 def extract_excel_data(excel_file: str, sheet: str) -> pd.DataFrame:
     df = (
