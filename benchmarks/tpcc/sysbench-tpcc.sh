@@ -1314,6 +1314,24 @@ function kernel_tpp_feature() {
     fi
 }
 
+# Process the TPCC results to CSV files, one per MySQL container
+# args: none
+# returns: nothing
+function process_tpcc_results_to_csv() {
+    cd "${OUTPUT_PATH}"
+    for i in $(seq 1 ${PM_INSTANCES});
+    do
+        if ! ../utils/tpcc_results_to_csv.py *run_*.${i}.*; then
+            error_msg "Failed to process the TPCC run results"
+        else
+            filename=$(basename "${file}")
+            mv tpcc_results.csv "tpcc_results.${i}.${filename}.csv"
+            info_msg "TPC-C run results for MySQL Instance ${i}: tpcc_results.${i}.csv"
+        fi
+    done
+    cd ..
+}
+
 #################################################################################################
 # Main
 #################################################################################################
@@ -1473,7 +1491,7 @@ if [ -n "$OPT_FUNCS_BEFORE" ]; then
 fi
 
 # Add remaining functions
-functions+=("create_sysbench_container_image" "start_sysbench_containers" "check_my_cnf_dir_exists" "start_mysql_containers" "pause_for_stability" "create_mysql_databases" "prepare_the_database" "get_mysql_config" "warm_the_database" "run_the_benchmark" "cleanup_database" "get_container_logs" "stop_containers" "remove_containers")
+functions+=("create_sysbench_container_image" "start_sysbench_containers" "check_my_cnf_dir_exists" "start_mysql_containers" "pause_for_stability" "create_mysql_databases" "prepare_the_database" "get_mysql_config" "warm_the_database" "run_the_benchmark" "cleanup_database" "get_container_logs" "stop_containers" "remove_containers" "process_tpcc_results_to_csv")
 
 # Add functions from OPT_FUNCS_AFTER if it is set
 if [ -n "$OPT_FUNCS_AFTER" ]; then
