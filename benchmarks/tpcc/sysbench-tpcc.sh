@@ -727,6 +727,8 @@ generate_worker_thread_sequence() {
 
     if ! [[ $max_value =~ ^[0-9]+$ ]]; then
         seq="1"
+    elif [[ $max_value -eq 1 ]]; then
+        seq="1"
     else
         for ((i = 0; ; i++)); do
             value=$((2 ** i))
