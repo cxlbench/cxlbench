@@ -56,6 +56,11 @@ SysbenchDBName="sbtest"                     # Name of the MySQL Database to crea
 SYSBENCH_OPTS_TEMPLATE="--db-driver=mysql --mysql-db=${SysbenchDBName} --mysql-user=${SYSBENCH_USER} --mysql-password=${SYSBENCH_USER_PASSWORD} --mysql-host=mysqlINSTANCE --mysql-port=3306 --time=RUNTIME  --threads=THREADS --tables=TABLES --scale=SCALE"
 SYSBENCH_THREADS=1                          # Number of Sysbench workload generator threads. Use -W to override
 
+# === Misc Variables ===
+
+OPT_FUNCS_BEFORE=""                   # Optional functions that get called before the bechmarks start in the main loop
+OPT_FUNCS_AFTER=""                    # Optional functions that get called after the bechmarks complete in the main loop
+
 #################################################################################################
 # Functions
 #################################################################################################
@@ -115,7 +120,8 @@ function print_usage()
     echo "    ${SCRIPT_NAME} OPTIONS"
     echo "      -c                                          : Cleanup. Completely remove all containers and the MySQL database"
     echo "      -C <numa_node>                              : [Required] CPU NUMA Node to run the MySQLServer"
-    echo "      -e dram|cxl|numainterleave|numapreferred    : [Required] Memory environment"
+    echo "      -e dram|cxl|numainterleave|numapreferred|   : [Required] Memory environment"
+    echo "         kerneltpp"
     echo "      -i <number_of_instances>                    : The number of container intances to execute: Default 1"
     echo "      -r                                          : Run the Sysbench workload"
     echo "      -p                                          : Prepare the database"
@@ -1136,6 +1142,178 @@ function check_selinux_enforce() {
     return 0
 }
 
+# Check if Kernel Transparent Page Placement is Enabled or Disabled
+# args: None
+# return: True (1) or False (0)
+function is_kernel_tpp_enabled() {
+    local numa_balancing=0
+    local demotion_enabled=0
+    local result=0
+
+    # Check if Kernel Tiering exists and is enabled or disabled
+    if [[ -f "/proc/sys/kernel/numa_balancing" ]];
+    then
+        numa_balancing=$(cat "/proc/sys/kernel/numa_balancing")
+
+        case "${numa_balancing}" in
+        0) # NUMA_BALANCING_DISABLED
+            #info_msg "Kernel TPP is Disabled (NUMA_BALANCING_DISABLED)"
+            result=0
+            ;;
+        1) # NUMA_BALANCING_NORMAL
+            #info_msg "Kernel TPP is Disabled (NUMA_BALANCING_NORMAL)"
+            result=0
+            ;;
+        2) # NUMA_BALANCING_MEMORY_TIERING
+            #info_msg "Kernel TPP is Enabled (NUMA_BALANCING_MEMORY_TIERING)"
+            result=1
+            ;;
+        *)
+            #info_msg "Kernel TPP is Unknown (${numa_balancing})"
+            result=0
+            ;;
+        esac
+    else
+        error_msg "'/proc/sys/kernel/numa_balancing' does not exist. Kernel doesn't support TPP"
+        result=0
+    fi
+
+    # Check if Kernel page demotion exists and is enabled or disabled
+    if [[ -f "/sys/kernel/mm/numa/demotion_enabled" ]];
+    then
+        demotion_enabled=$(cat "/sys/kernel/mm/numa/demotion_enabled")
+
+        case "${demotion_enabled}" in
+        0|"false") # Disabled
+            #info_msg "Kernel TPP Page Demotion is Disabled"
+            result=0
+            ;;
+        1|"true") # Enabled
+            #info_msg "Kernel TPP Page Demotion is Enabled"
+            result=1
+            ;;
+        *)
+            #info_msg "Kernel TPP Page Demotion is Unknown (${demotion_enabled})"
+            result=0
+            ;;
+        esac
+    else
+        error_msg "'/sys/kernel/mm/numa/demotion_enabled' does not exist. Kernel doesn't support TPP Page Demotion."
+        result=0
+    fi
+
+    # Return True (1) or False (0)
+    echo "$result"
+}
+
+# Enable the Kernel TPP feature. Must be root to do this!
+# args: none
+# returns: nothing
+function enable_kernel_tpp() {
+    local err_state=false 
+
+    if echo 2 > /proc/sys/kernel/numa_balancing;
+    then
+        error_msg "Failed to enable Kernel Memory Tiering"
+        err_state=true
+    else
+        info_msg "Successfully enabled Kernel Memory Tiering"
+        # Disable Kernel TPP after the benchmarks complete
+        OPT_FUNCS_AFTER="disable_kernel_tpp"
+    fi
+    
+    if echo 1 > /sys/kernel/mm/numa/demotion_enabled;
+    then
+        error_msg "Failed to enable Kernel Memory Tiering Page Demotion"
+        err_state=true
+    else
+        info_msg "Successfully enabled Kernel Memory Tiering Page Demotion"
+        # Disable Kernel TPP after the benchmarks complete
+        OPT_FUNCS_AFTER="disable_kernel_tpp"
+    fi
+
+    if ${err_state}; then
+        return 1
+    else
+        return 0
+    fi
+}
+
+# Disable the Kernel TPP feature. Must be root to do this!
+# args: none
+# returns: nothing
+function disable_kernel_tpp() {
+    local err_state=false 
+
+    if echo 1 > /proc/sys/kernel/numa_balancing;
+    then
+        error_msg "Failed to enable Kernel Memory Tiering"
+        err_state=true
+    else
+        info_msg "Successfully enabled Kernel Memory Tiering"
+    fi
+    
+    if echo 0 > /sys/kernel/mm/numa/demotion_enabled;
+    then
+        error_msg "Failed to enable Kernel Memory Tiering Page Demotion"
+        err_state=true
+    else
+        info_msg "Successfully enabled Kernel Memory Tiering Page Demotion"
+    fi
+
+    if ${err_state}; then
+        return 1
+    else
+        return 0
+    fi
+}
+
+# Check if the Kernel TPP feature is required or not.
+# The user can explicityly use TPP with (-e kerneltpp)
+# Kernel TPP should be disabled for all other tests
+function kernel_tpp_feature() {
+    # Linux Kernel Transparent Page Placement (aka Tiering)
+    # Debug statements
+    if [[ ("$MEM_ENVIRONMENT" == "kerneltpp" || "$MEM_ENVIRONMENT" == "tpp") ]]
+    then
+        # TPP is disabled. If the user is root, try to auto-enable it. Otherwise tell the user to enable it manually
+        if [[ $(is_kernel_tpp_enabled) -eq 0 ]] && [[ $EUID -ne 0 ]]; # User is not root, so we can't auto-enable TPP
+        then
+            error_msg "Please enable Linux Kernel Transparent Page Placement (TPP), then re-run this test. As root, run:"
+            info_msg " $ sudo echo 2 > /proc/sys/kernel/numa_balancing"
+            info_msg " $ sudo echo 1 > /sys/kernel/mm/numa/demotion_enabled"
+            exit 1
+        elif [[ $(is_kernel_tpp_enabled) -eq 0 ]] && [[ $EUID -eq 0 ]]; # User is root
+        then
+            enable_kernel_tpp
+        elif [[ $(is_kernel_tpp_enabled) -eq 1 ]]; # TPP is enabled
+        then
+            info_msg "Kernel Transparent Page Placement is Enabled"
+        else # Should not reach
+            error_msg "An unknown memory environment setup has been detected that cannot be handled"
+            error_msg "is_kernel_tpp_enabled returned '$(is_kernel_tpp_enabled)'"
+            error_msg "EUID: $EUID"
+        fi
+    else # TPP should be disabled for all other memory test environments
+        if [[ $(is_kernel_tpp_enabled) -eq 1 ]] && [[ $EUID -ne 0 ]]; # User is not root
+        then
+            error_msg "Kernel Transparent Page Placement (TPP) is Enabled. Please disable it"
+            info_msg " $ sudo echo 1 > /proc/sys/kernel/numa_balancing"
+            info_msg " $ sudo echo 0 > /sys/kernel/mm/numa/demotion_enabled"
+        elif [[ $(is_kernel_tpp_enabled) -eq 1 ]] && [[ $EUID -eq 0 ]]; # User is root
+        then
+            disable_kernel_tpp
+        elif [[ $(is_kernel_tpp_enabled) -eq 0 ]]; # TPP is disabled
+        then
+            info_msg "Kernel Transparent Page Placement (TPP) is Disabled"
+        else # Should not reach
+            error_msg "An unknown memory environment setup has been detected that cannot be handled"
+            error_msg "is_kernel_tpp_enabled returned '$(is_kernel_tpp_enabled)'"
+            error_msg "EUID: $EUID"
+        fi
+    fi
+}
+
 #################################################################################################
 # Main
 #################################################################################################
@@ -1215,14 +1393,14 @@ then
     exit 1
 fi
 
-if [[ ("$MEM_ENVIRONMENT" != "numapreferred" && "$MEM_ENVIRONMENT" != "numainterleave" && "$MEM_ENVIRONMENT" != "mm" && "$MEM_ENVIRONMENT" != "dram" && "$MEM_ENVIRONMENT" != "cxl") ]];
+if [[ ("$MEM_ENVIRONMENT" != "numapreferred" && "$MEM_ENVIRONMENT" != "numainterleave" && "$MEM_ENVIRONMENT" != "mm" && "$MEM_ENVIRONMENT" != "dram" && "$MEM_ENVIRONMENT" != "cxl" && "$MEM_ENVIRONMENT" != "kerneltpp" && "$MEM_ENVIRONMENT" != "tpp") ]];
 then
     error_msg "Unknown memory environment '${MEM_ENVIRONMENT}'"
     print_usage
     exit 1
 else
     # Validate the user provided two or more NUMA nodes in the (-M) option for numactl options
-    if [[ ("$MEM_ENVIRONMENT" == "numapreferred" || "$MEM_ENVIRONMENT" == "numainterleave" ) ]];
+    if [[ ("$MEM_ENVIRONMENT" == "numapreferred" || "$MEM_ENVIRONMENT" == "numainterleave" ) ]]
     then
         # Count the number of values separated by commas
         IFS=',' read -ra NUMA_NODES <<< "$MYSQL_MEM_NUMA_NODE"
@@ -1284,7 +1462,23 @@ log_stdout_stderr "${OUTPUT_PATH}"
 display_start_info "$*"
 
 # Define the array of functions to call in the correct order
-functions=("check_selinux_enforce" "check_mysql_data_dir" "check_cgroups" "create_network" "set_numactl_options" "create_sysbench_container_image" "start_sysbench_containers" "check_my_cnf_dir_exists" "start_mysql_containers" "pause_for_stability" "create_mysql_databases" "prepare_the_database" "get_mysql_config" "warm_the_database" "run_the_benchmark" "cleanup_database" "get_container_logs" "stop_containers" "remove_containers")
+# functions=("check_selinux_enforce" "check_mysql_data_dir" "check_cgroups" "create_network" "set_numactl_options" "${OPT_FUNCS_BEFORE}" "create_sysbench_container_image" "start_sysbench_containers" "check_my_cnf_dir_exists" "start_mysql_containers" "pause_for_stability" "create_mysql_databases" "prepare_the_database" "get_mysql_config" "warm_the_database" "run_the_benchmark" "cleanup_database" "get_container_logs" "stop_containers" "remove_containers" "${OPT_FUNCS_AFTER}")
+
+# Define the array of functions to call in the correct order
+functions=("check_selinux_enforce" "check_mysql_data_dir" "check_cgroups" "create_network" "set_numactl_options" "kernel_tpp_feature")
+
+# Add functions from OPT_FUNCS_BEFORE if it is set
+if [ -n "$OPT_FUNCS_BEFORE" ]; then
+    functions+=("$OPT_FUNCS_BEFORE")
+fi
+
+# Add remaining functions
+functions+=("create_sysbench_container_image" "start_sysbench_containers" "check_my_cnf_dir_exists" "start_mysql_containers" "pause_for_stability" "create_mysql_databases" "prepare_the_database" "get_mysql_config" "warm_the_database" "run_the_benchmark" "cleanup_database" "get_container_logs" "stop_containers" "remove_containers")
+
+# Add functions from OPT_FUNCS_AFTER if it is set
+if [ -n "$OPT_FUNCS_AFTER" ]; then
+    functions+=("$OPT_FUNCS_AFTER")
+fi
 
 # Iterate over the array of functions and call them one by one
 # Handle the return value: 0=Success, 1=Failure
