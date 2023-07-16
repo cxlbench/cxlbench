@@ -510,10 +510,10 @@ function pause_for_stability()
 {
     local seconds
 
-    seconds=30
+    seconds=60
     total_seconds=$seconds
     while [ $seconds -gt 0 ]; do
-        echo -ne "${STR_INFO} Pausing for $total_seconds seconds to ensure the containers and services are up and running... $seconds\033[0K\r"
+        echo -ne "${STR_INFO} Pausing for $total_seconds seconds to give the containers time to initialize ... $seconds\033[0K\r"
         sleep 1
         seconds=$((seconds-1))
     done
@@ -1216,7 +1216,7 @@ function enable_kernel_tpp() {
 
     if echo 2 > /proc/sys/kernel/numa_balancing;
     then
-        error_msg "Failed to enable Kernel Memory Tiering"
+        error_msg "Failed to enable Kernel Memory Tiering. This Kernel may not support tiering."
         err_state=true
     else
         info_msg "Successfully enabled Kernel Memory Tiering"
