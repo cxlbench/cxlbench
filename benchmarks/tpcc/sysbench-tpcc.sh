@@ -933,7 +933,7 @@ function get_mysql_config() {
         # Dump the MySQL database variables
         if podman exec -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD}" -i mysql${i} mysql -uroot -e "SHOW GLOBAL VARIABLES;" &> ${OUTPUT_PATH}/mysql_global_variables.out
         then
-            info_msg "MySQL Global Variables successfully written to '${OUTPUT_PATH}/mysql_global_variables.out'"
+            info_msg "MySQL Global Variables successfully written to '${OUTPUT_PATH}/mysql_global_variables.mysql${i}.out'"
         else
             error_msg "Failed to acquire the MySQL Global Variables."
         fi
@@ -941,7 +941,7 @@ function get_mysql_config() {
         # Gather the total database size including all the tables
         if podman exec -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD}" -i mysql${i} mysql -uroot -e "SELECT table_schema 'Database Name', sum(data_length + index_length) / (1024 * 1024) 'Database Size in MB' FROM information_schema.TABLES WHERE table_schema = '${SysbenchDBName}' GROUP BY table_schema;" &> ${OUTPUT_PATH}/mysql_dbsize.out
         then
-            info_msg "MySQL Database size successfully written to '${OUTPUT_PATH}/mysql_dbsize.out'"
+            info_msg "MySQL Database size successfully written to '${OUTPUT_PATH}/mysql_dbsize.mysql${i}.out'"
         else
             error_msg "Failed to acquire the MySQL database size."
         fi
