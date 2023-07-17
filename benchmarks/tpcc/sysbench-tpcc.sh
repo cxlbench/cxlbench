@@ -153,16 +153,14 @@ function print_usage()
 # return: none
 function spin() {
     local -a marks=( '/' '-' '\' '|' )
-    local -a pids=("$@")
+    local spin_pid=$1
 
     while [[ true ]]; do
         printf '%s\r' "${marks[i++ % ${#marks[@]}]}"
         sleep 0.1
-        for pid in "${pids[@]}"; do
-            if ! kill -0 "$pid" 2> /dev/null; then
-                return
-            fi
-        done
+        #if ! kill -0 "$spin_pid" &> /dev/null; then
+        #    return
+        #fi
     done
 }
 
@@ -304,9 +302,9 @@ EOF
 
         info_msg "Building container image from Docker file..."
         podman build --rm -t $SYSBENCH_CONTAINER_IMG_NAME --file Dockerfile.sysbenchlua . &> ${OUTPUT_PATH}/podman_build.log &
-        pids[${i}]=$!
+        pids[0]=$!
 
-        spin "${pids[@]}" &
+        spin "${pids[0]}" &  # Start the spinner with the first process ID
         spin_pid=$!
         wait "${pids[@]}"
 
@@ -321,7 +319,7 @@ EOF
             fi
         done
 
-        kill $spin_pid 2> /dev/null
+        kill $spin_pid &> /dev/null
     fi
 
     if ${err_state}; then
@@ -615,10 +613,10 @@ function prepare_the_database()
         SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/4/" | sed "s/RUNTIME/60/" )
 
         podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS prepare" &> ${OUTPUT_PATH}/${OUTPUT_PREFIX}prepare.${i}.log &
-        pids[${i}]=$!
+        pids[${i}-1]=$!
     done
 
-    spin "${pids[@]}" &
+    spin "${pids[0]}" &  # Start the spinner with the first process ID
     spin_pid=$!
     wait "${pids[@]}"
 
@@ -632,7 +630,7 @@ function prepare_the_database()
         fi
     done
 
-    kill $spin_pid
+    kill $spin_pid &> /dev/null
 
     # Enable the REDO LOG
     for i in $(seq 1 ${PM_INSTANCES});
@@ -684,10 +682,10 @@ function warm_the_database()
         info_msg " ... Warming database on mysql${i} ... "
         SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/4/" | sed "s/RUNTIME/${SYSBENCH_WARMTIME}/" )
         podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS run" > ${OUTPUT_PATH}/${OUTPUT_PREFIX}warmup.${i}.log &
-        pids[${i}]=$!
+        pids[${i}-1]=$!
     done
 
-    spin "${pids[@]}" &
+    spin "${pids[0]}" &  # Start the spinner with the first process ID
     spin_pid=$!
     wait "${pids[@]}"
 
@@ -702,7 +700,7 @@ function warm_the_database()
         fi
     done
 
-    kill $spin_pid
+    kill $spin_pid &> /dev/null
 
     # Calculate the time to warmup the database
     duration=$(calc_time_duration ${start_time})
@@ -796,7 +794,7 @@ function run_the_benchmark()
             # Run the benchmark
             SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/${threads}/" | sed "s/RUNTIME/${SYSBENCH_RUNTIME}/" )
             podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS run" &> ${OUTPUT_PATH}/${OUTPUT_PREFIX}run_${threads}.${i}.log &
-            pids[${i}]=$!
+            pids[${i}-1]=$!
         done
 
         for pid in ${pids[*]}; do
@@ -855,10 +853,10 @@ function cleanup_database()
         SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/4/" | sed "s/RUNTIME/600/" )
         podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS cleanup" &> ${OUTPUT_PATH}/${OUTPUT_PREFIX}cleanup.${i}.log &
         # Check for failure here, bail out and clean up
-        pids[${i}]=$!
+        pids[${i}-1]=$!
     done
 
-    spin "${pids[@]}" &
+    spin "${pids[0]}" &  # Start the spinner with the first process ID
     spin_pid=$!
     wait "${pids[@]}"
 
@@ -873,7 +871,7 @@ function cleanup_database()
         fi
     done
 
-    kill $spin_pid
+    kill $spin_pid &> /dev/null
 
     # Remove the MySQL Data Directory
     if ! rm -rf "/${MYSQL_DATA_DIR}/mysql-$i" >/dev/null 2>&1
