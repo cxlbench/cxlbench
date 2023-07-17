@@ -2,54 +2,36 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import sys
 
-def extract_excel_data(excel_file: str, sheet: str) -> pd.DataFrame:
-    df = (
-        pd.read_excel(
-            io=excel_file,
-            sheet_name=sheet,
-            header=1,
+
+def main(csv_file: str) -> None:
+    df = pd.read_csv(csv_file).iloc[:, 0:4]
+
+    functions = df["Function"].drop_duplicates()
+
+    for function in functions:
+        tmp_df: pd.DataFrame = (
+            # https://stackoverflow.com/a/27975230 (Filtering by row value)
+            df[df["Function"].str.contains(function)]
+            .drop(columns=["Function"])
+            .groupby(["Threads"])["BestRateMBs"]
+            .mean()
         )
-        .iloc[:, 0:3]
-        .sort_values(["Function", "ArraySize"])
-        .drop(columns=["ArraySize"])
-        .groupby(["Function"])
-        .mean()
-    )
 
-    # df['Threads'] = int(sheet.split()[0])
-    df['Threads'] = sheet.split()[0]
+        x, y = tmp_df.index, tmp_df.values
 
-    return df
+        plt.plot(x, y, label=function)
 
+        # Smoothing the graph
+        # x_new = np.linspace(x.min(), x.max(), 100)
+        # spline = make_interp_spline(x, y)
+        # y_smooth = spline(x_new)
+        # plt.plot(x_new, y_smooth, label=function)
 
-def main(excel_file: str) -> None:
-    sheets = pd.ExcelFile(excel_file).sheet_names
-
-    all_dfs: list[pd.DataFrame] = []
-
-    for sheet in sheets:
-        tmp_df = extract_excel_data(excel_file=excel_file, sheet=sheet)
-        all_dfs.append(tmp_df)
-
-    plt.figure(figsize=(10, 6))
-
-    df = pd.concat(all_dfs).groupby(["Threads"])
-
-    groups = df.groups.keys()
-
-    print(groups)
-
-    # x: threads
-    # y: bandwidth
-    # each line: function
-
-    print(df)
-
-    # df.plot(x="Threads", y="BestRateMBs")
-
-    df.plot()
+    plt.xlabel("Threads")
+    plt.ylabel("Best Rate (MB/s)")
+    plt.legend()
     plt.show()
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    main(csv_file=sys.argv[1])
