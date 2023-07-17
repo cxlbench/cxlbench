@@ -581,6 +581,7 @@ function idle_latency() {
 # Arg0: DRAM or CXL NUMA Node to test
 # TODO: If '-X' was specified, use all CPU threads, otherwise use the first thread on each core in ${CPU_RANGE}
 function bandwidth() {
+   get_first_cpu_in_socket
    echo ""
    echo "--- Bandwidth Tests ---"
    echo "Using CPUs: ${CPU_RANGE}"
@@ -622,6 +623,7 @@ function bandwidth() {
 # Collect bandwidth and latency stats for a single NUMA node using a ramp of CPUs used for the test
 # arg0/$1 = NUMA Node to test
 function bandwidth_ramp() {
+  get_first_cpu_in_socket
   local MEM_NUMA_NODE=$1
   if [[ ${OPT_DRAM_NUMA_NODE} -eq ${MEM_NUMA_NODE} ]]
   then
@@ -638,13 +640,14 @@ function bandwidth_ramp() {
   echo "=== Collecting Memory Node ${MEM_NUMA_NODE} bandwidth using Socket ${socket} ==="
   for (( c=0; c<=${CORES_PER_SOCKET}-1; c=c+${IncCPU} ))
   do
+    TO_CPU=`expr ${FIRST_CPU_ON_SOCKET} + ${c}`
     # Build the input file
     for rdwr in R
     do
       # Random bandwidth option is supported only for R, W2, W5 and W6 traffic types
       for access in seq rand
       do
-        echo "${FIRST_CPU_ON_SOCKET}-${c} ${rdwr} ${access} ${BUF_SZ} dram ${MEM_NUMA_NODE}" > mlc_loaded_latency.input
+        echo "${FIRST_CPU_ON_SOCKET}-${TO_CPU} ${rdwr} ${access} ${BUF_SZ} dram ${MEM_NUMA_NODE}" > mlc_loaded_latency.input
         #numactl --membind=0 mlc/mlc --peak_injection_bandwidth -k1-${c}
         ${MLC} --loaded_latency -gmlc_injection.delay -omlc_loaded_latency.input ${OPT_X}
         # Save the results to a CSV file
@@ -666,6 +669,7 @@ function bandwidth_ramp() {
 # arg0/$1 = DRAM NUMA Node
 # arg1/$2 = CXL NUMA Node
 function bandwidth_ramp_interleave() {
+  get_first_cpu_in_socket
   local DRAM_NUMA_NODE=$1
   local CXL_NUMA_NODE=$2
   local ratiostr="0:0"
@@ -676,6 +680,7 @@ function bandwidth_ramp_interleave() {
   echo "=== Collecting DRAM + CXL interleaved stats using Socket ${socket} with Memory Nodes DRAM:${DRAM_NUMA_NODE}, CXL:${CXL_NUMA_NODE} ==="
   for (( c=0; c<=${CORES_PER_SOCKET}-1; c=c+${IncCPU} ))
   do
+    TO_CPU=`expr ${FIRST_CPU_ON_SOCKET} + ${c}`
     # Build the input file
     # File format:
     # CPU RdWr Access Buf_Sz Node0 Node 1 Ratio
@@ -704,7 +709,7 @@ function bandwidth_ramp_interleave() {
           fi
 
           # Generate the input file for MLC
-          echo "${FIRST_CPU_ON_SOCKET}-${c} ${rdwr} ${access} ${BUF_SZ} dram ${DRAM_NUMA_NODE} dram ${CXL_NUMA_NODE} ${ratio}" > mlc_loaded_latency.input
+          echo "${FIRST_CPU_ON_SOCKET}-${TO_CPU} ${rdwr} ${access} ${BUF_SZ} dram ${DRAM_NUMA_NODE} dram ${CXL_NUMA_NODE} ${ratio}" > mlc_loaded_latency.input
 
           # Run MLC
           ${MLC} --loaded_latency -gmlc_injection.delay -omlc_loaded_latency.input
