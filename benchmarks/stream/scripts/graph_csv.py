@@ -3,8 +3,9 @@ import matplotlib.pyplot as plt
 import sys
 
 
-def main(csv_file: str) -> None:
+def main(csv_file: str, array_size: int) -> None:
     df = pd.read_csv(csv_file).iloc[:, 0:4]
+    df = df[df["ArraySize"] == array_size]
 
     functions = df["Function"].drop_duplicates()
 
@@ -34,4 +35,4 @@ def main(csv_file: str) -> None:
 
 
 if __name__ == "__main__":
-    main(csv_file=sys.argv[1])
+    main(csv_file=sys.argv[1], array_size=int(sys.argv[2]))
