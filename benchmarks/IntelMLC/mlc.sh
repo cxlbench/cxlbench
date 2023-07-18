@@ -649,7 +649,7 @@ function bandwidth_ramp() {
       do
         echo "${FIRST_CPU_ON_SOCKET}-${TO_CPU} ${rdwr} ${access} ${BUF_SZ} dram ${MEM_NUMA_NODE}" > mlc_loaded_latency.input
         #numactl --membind=0 mlc/mlc --peak_injection_bandwidth -k1-${c}
-        ${MLC} --loaded_latency -gmlc_injection.delay -omlc_loaded_latency.input ${OPT_X}
+        ${MLC} -i${FIRST_CPU_ON_SOCKET} --loaded_latency -gmlc_injection.delay -omlc_loaded_latency.input ${OPT_X}
         # Save the results to a CSV file
         # Print headings to the CSV file on first access
         if [[ ${c} -eq 0 ]]
@@ -712,7 +712,7 @@ function bandwidth_ramp_interleave() {
           echo "${FIRST_CPU_ON_SOCKET}-${TO_CPU} ${rdwr} ${access} ${BUF_SZ} dram ${DRAM_NUMA_NODE} dram ${CXL_NUMA_NODE} ${ratio}" > mlc_loaded_latency.input
 
           # Run MLC
-          ${MLC} --loaded_latency -gmlc_injection.delay -omlc_loaded_latency.input
+          ${MLC} -i${FIRST_CPU_ON_SOCKET} --loaded_latency -gmlc_injection.delay -omlc_loaded_latency.input
 
           # Extract the Latency and Bandwidth results
           LatencyResult=$(tail -n 4 "${LOG_FILE}" | ${GREP} '00000' | awk '{print $2}')
