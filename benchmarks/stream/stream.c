@@ -441,7 +441,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    printf("Function    Best Rate MB/s  Avg time     Min time     Max time\n");
+    printf("Function        BestRateMBs AvgTime      MinTime      MaxTime\n");
     for (j = 0; j < TIMES_LEN; j++) {
         avgtime[j] = avgtime[j] / (double)(ntimes - 1);
 
