@@ -379,9 +379,9 @@ int main(int argc, char **argv) {
         tuned_STREAM_Triad(scalar, a2, b2, c2);
 #else
 #pragma omp parallel for
-        // iv. triad node2-to-node1 (read b2, c2, write a2)
+        // iv. triad node2-to-node1 (read b2, c2, write a1)
         for (j = 0; j < stream_array_size; j++)
-            a2[j] = b2[j] + scalar * c2[j];
+            a1[j] = b2[j] + scalar * c2[j];
 #endif
         times[3][k] = mysecond() - times[3][k];
 
