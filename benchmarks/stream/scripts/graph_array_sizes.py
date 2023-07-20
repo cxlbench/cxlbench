@@ -21,7 +21,7 @@ def main() -> None:
     parser.add_argument('csv_file', type=file_exists,
                         help='CSV file to process')
 
-    parser.add_argument('dir', type=file_exists,
+    parser.add_argument('dir', type=str,
                         help='Directory to dump all the graphs into')
 
     args = parser.parse_args()
