@@ -45,24 +45,26 @@ def main() -> None:
         args.dram_cxl_csv_file,
     )
 
-    # dram_df = pd.read_csv(dram_csv_file).iloc[:, 0:4]
-    # dram_df["MemoryType"] = "DRAM"
+    dram_df = pd.read_csv(dram_csv_file).iloc[:, 0:4]
+    dram_df["MemoryType"] = "DRAM"
 
-    # cxl_df = pd.read_csv(cxl_csv_file).iloc[:, 0:4]
-    # cxl_df["MemoryType"] = "CXL"
+    cxl_df = pd.read_csv(cxl_csv_file).iloc[:, 0:4]
+    cxl_df["MemoryType"] = "CXL"
 
-    dram_cxl_df = pd.read_csv(dram_cxl_csv_file).iloc[:, 0:4]
+    combined_df = pd.read_csv(dram_cxl_csv_file).iloc[:, 0:4]
+
+    # https://stackoverflow.com/a/67148732 (filtering via index)
+    dram_cxl_df = combined_df[combined_df.index.map(
+        lambda i: i % 8 in (0, 2, 5, 7))]
     dram_cxl_df["MemoryType"] = "DRAM_CXL"
 
-    # https://stackoverflow.com/a/67148732
-    # TODO: Correct this so that indices 0, 2, 5, and 7 from 8 row blocks are captured
-    # TODO:     for reading DRAM to write to CXL
-    new = dram_cxl_df[dram_cxl_df.index.map(lambda i: i % 8 in (0, 2, 5, 7))]
-    print(new.to_string(max_rows=None))
+    cxl_dram_df = combined_df[combined_df.index.map(
+        lambda i: i % 8 in (1, 3, 4, 6))]
+    cxl_dram_df["MemoryType"] = "CXL_DRAM"
 
-    # df = pd.concat([dram_df, cxl_df, dram_cxl_df])
+    df = pd.concat([dram_df, cxl_df, dram_cxl_df, cxl_dram_df])
 
-    # print(df)
+    print(df.to_string(max_rows=None))
 
     # array_sizes = df["ArraySize"].drop_duplicates()
     # functions = df["Function"].drop_duplicates()
@@ -72,8 +74,6 @@ def main() -> None:
 
     #     for function in functions:
     #         tmp_df = pd.DataFrame = ()
-
-    # print(df)
 
 
 if __name__ == "__main__":
