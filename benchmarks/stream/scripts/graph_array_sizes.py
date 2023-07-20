@@ -40,6 +40,9 @@ def main() -> None:
     for array_size in array_sizes:
         filtered = df[df["ArraySize"] == array_size]
 
+        fig = plt.figure()
+        ax = plt.subplot(111)
+
         for function in functions:
             tmp_df: pd.DataFrame = (
                 # https://stackoverflow.com/a/27975230 (Filtering by row value)
@@ -51,7 +54,7 @@ def main() -> None:
 
             x, y = tmp_df.index, tmp_df.values
 
-            plt.plot(x, y, label=function)
+            ax.plot(x, y, label=function)
 
             # Smoothing the graph
             # x_new = np.linspace(x.min(), x.max(), 100)
@@ -59,14 +62,20 @@ def main() -> None:
             # y_smooth = spline(x_new)
             # plt.plot(x_new, y_smooth, label=function)
 
-        plt.xlabel("Threads")
-        plt.ylabel("Best Rate (MB/s)")
-        plt.title(f"Array size: {array_size}")
-        plt.legend()
+        # https://stackoverflow.com/a/4701285 (setting legend outside plot)
+        box = ax.get_position()
+        ax.set_position([box.x0, box.y0 + box.height * 0.1,
+                        box.width, box.height * 0.9])
+        ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.125),
+                  fancybox=True, shadow=True, ncol=5)
+
+        ax.set_xlabel("Threads")
+        ax.set_ylabel("Best Rate (MB/s)")
+        ax.set_title(f"Array size: {array_size}")
 
         f = dir + f"{array_size}.png"
-        plt.savefig(f)
-        plt.clf()
+        fig.savefig(f)
+        fig.clf()
 
 
 if __name__ == "__main__":
