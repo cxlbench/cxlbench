@@ -701,8 +701,8 @@ void checkSTREAMresults() {
         a1j = scalar * b2j;
         // iii. add node1-to-node2 (read a1, b1, write c2)
         c2j = a1j + b1j;
-        // iv. triad node2-to-node1 (read b2, c2, write a2)
-        a2j = b2j + scalar * c2j;
+        // iv. triad node2-to-node1 (read b2, c2, write a1)
+        a1j = b2j + scalar * c2j;
         // v. copy node2-to-node1 (read a2, write b1)
         b1j = a2j;
         // vi. scale node1-to-node2 (read b1, write a2)
