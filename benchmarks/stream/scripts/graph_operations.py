@@ -1,13 +1,15 @@
-import pandas as pd
-import matplotlib.pyplot as plt
-from pathlib import Path
 import argparse
-import numpy as np
-from scipy.interpolate import make_interp_spline
 import os
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from scipy.interpolate import make_interp_spline
 
 # Supressing a warning that appears when more than 20 figures are opened
 plt.rcParams['figure.max_open_warning'] = 0
+
 
 def file_exists(file: str) -> Path:
     path = Path(file)
@@ -23,18 +25,36 @@ def main() -> None:
         description="Create graphs from previously generated CSV files"
     )
 
-    parser.add_argument("dram_csv_file", type=file_exists,
-                        help="CSV file to process")
-
-    parser.add_argument("cxl_csv_file", type=file_exists,
-                        help="CSV file to process")
-
     parser.add_argument(
-        "dram_cxl_csv_file", type=file_exists, help="CSV file to process"
+        "dram_csv_file",
+        type=file_exists,
+        help="CSV file to process"
     )
 
     parser.add_argument(
-        "dir", type=str, help="Directory to dump all the graphs into")
+        "cxl_csv_file",
+        type=file_exists,
+        help="CSV file to process"
+    )
+
+    parser.add_argument(
+        "dram_cxl_csv_file",
+        type=file_exists,
+        help="CSV file to process"
+    )
+
+    parser.add_argument(
+        "dir",
+        type=str,
+        help="Directory to dump all the graphs into"
+    )
+
+    parser.add_argument(
+        "--array-size",
+        type=int,
+        required=False,
+        help="The array size to use"
+    )
 
     args = parser.parse_args()
 
@@ -70,8 +90,14 @@ def main() -> None:
     df = pd.concat([dram_df, cxl_df, dram_cxl_df, cxl_dram_df])
 
     memory_types = df["MemoryType"].drop_duplicates()
-    array_sizes = df["ArraySize"].drop_duplicates()
     functions = df["Function"].drop_duplicates()
+
+    array_sizes: list[int] | pd.Series[int]
+
+    if selected_array_size := args.array_size:
+        array_sizes = [selected_array_size]
+    else:
+        array_sizes = df["ArraySize"].drop_duplicates()
 
     for func in functions:
         for array_size in array_sizes:
@@ -107,12 +133,7 @@ def main() -> None:
             ax.set_ylabel("Best Rate (MB/s)")
             ax.set_title(f"Function: {func}, Array size: {array_size}")
 
-            current_dir = directory + f"{func}/"
-
-            if not os.path.isdir(current_dir):
-                os.mkdir(current_dir)
-
-            f = current_dir + f"{func}-{array_size}.png"
+            f = directory + f"{func}-{array_size}.png"
             fig.savefig(f)
             fig.clf()
 
