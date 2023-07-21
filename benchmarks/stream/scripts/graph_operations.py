@@ -6,6 +6,8 @@ import numpy as np
 from scipy.interpolate import make_interp_spline
 import os
 
+# Supressing a warning that appears when more than 20 figures are opened
+plt.rcParams['figure.max_open_warning'] = 0
 
 def file_exists(file: str) -> Path:
     path = Path(file)
@@ -21,9 +23,6 @@ def main() -> None:
         description="Create graphs from previously generated CSV files"
     )
 
-    parser.add_argument("function", type=str, help="The function to plot")
-    parser.add_argument("array_size", type=int, help="The array size to plot")
-
     parser.add_argument("dram_csv_file", type=file_exists,
                         help="CSV file to process")
 
@@ -38,9 +37,6 @@ def main() -> None:
         "dir", type=str, help="Directory to dump all the graphs into")
 
     args = parser.parse_args()
-
-    function_filter = args.function
-    array_size = args.array_size
 
     directory = args.dir
 
@@ -71,47 +67,54 @@ def main() -> None:
     dram_cxl_df["MemoryType"] = "DRAM to CXL"
     cxl_dram_df["MemoryType"] = "CXL to DRAM"
 
-    print(cxl_dram_df)
-
     df = pd.concat([dram_df, cxl_df, dram_cxl_df, cxl_dram_df])
 
-    filtered = df[df["ArraySize"] == array_size]
-    filtered = filtered[filtered["Function"] == function_filter]
-
     memory_types = df["MemoryType"].drop_duplicates()
+    array_sizes = df["ArraySize"].drop_duplicates()
+    functions = df["Function"].drop_duplicates()
 
-    fig = plt.figure()
-    ax = plt.subplot(111)
+    for func in functions:
+        for array_size in array_sizes:
+            filtered = df[df["ArraySize"] == array_size]
+            filtered = filtered[filtered["Function"] == func]
 
-    for memory in memory_types:
-        tmp_df: pd.DataFrame = (
-            filtered[filtered["MemoryType"].str.contains(memory)]
-            .drop(columns=["MemoryType"])
-            .groupby(["Threads"])["BestRateMBs"]
-            .mean()
-        )
+            fig = plt.figure()
+            ax = plt.subplot(111)
 
-        x, y = tmp_df.index, tmp_df.values
+            for memory in memory_types:
+                tmp_df: pd.DataFrame = (
+                    filtered[filtered["MemoryType"].str.contains(memory)]
+                    .drop(columns=["MemoryType"])
+                    .groupby(["Threads"])["BestRateMBs"]
+                    .mean()
+                )
 
-        x_new = np.linspace(x.min(), x.max(), 300)
-        spline = make_interp_spline(x, y)
-        y_smooth = spline(x_new)
-        ax.plot(x_new, y_smooth, label=memory)
+                x, y = tmp_df.index, tmp_df.values
 
-    # https://stackoverflow.com/a/4701285 (setting legend outside plot)
-    box = ax.get_position()
-    ax.set_position([box.x0, box.y0 + box.height * 0.1,
-                    box.width, box.height * 0.9])
-    ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.125),
-              fancybox=True, shadow=True, ncol=5)
+                x_new = np.linspace(x.min(), x.max(), 300)
+                spline = make_interp_spline(x, y)
+                y_smooth = spline(x_new)
+                ax.plot(x_new, y_smooth, label=memory)
 
-    ax.set_xlabel("Threads")
-    ax.set_ylabel("Best Rate (MB/s)")
-    ax.set_title(f"Function: {function_filter}, Array size: {array_size}")
+            # https://stackoverflow.com/a/4701285 (setting legend outside plot)
+            box = ax.get_position()
+            ax.set_position([box.x0, box.y0 + box.height * 0.1,
+                            box.width, box.height * 0.9])
+            ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.125),
+                      fancybox=True, shadow=True, ncol=5)
 
-    f = directory + f"{function_filter}-{array_size}.png"
-    fig.savefig(f)
-    fig.clf()
+            ax.set_xlabel("Threads")
+            ax.set_ylabel("Best Rate (MB/s)")
+            ax.set_title(f"Function: {func}, Array size: {array_size}")
+
+            current_dir = directory + f"{func}/"
+
+            if not os.path.isdir(current_dir):
+                os.mkdir(current_dir)
+
+            f = current_dir + f"{func}-{array_size}.png"
+            fig.savefig(f)
+            fig.clf()
 
 
 if __name__ == "__main__":
