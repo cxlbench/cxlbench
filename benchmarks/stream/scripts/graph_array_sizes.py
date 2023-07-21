@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 import os
 from pathlib import Path
 import argparse
+import numpy as np
+from scipy.interpolate import make_interp_spline
 
 
 def file_exists(file: str) -> Path:
@@ -54,13 +56,10 @@ def main() -> None:
 
             x, y = tmp_df.index, tmp_df.values
 
-            ax.plot(x, y, label=function)
-
-            # Smoothing the graph
-            # x_new = np.linspace(x.min(), x.max(), 100)
-            # spline = make_interp_spline(x, y)
-            # y_smooth = spline(x_new)
-            # plt.plot(x_new, y_smooth, label=function)
+            x_new = np.linspace(x.min(), x.max(), 300)
+            spline = make_interp_spline(x, y)
+            y_smooth = spline(x_new)
+            ax.plot(x_new, y_smooth, label=function)
 
         # https://stackoverflow.com/a/4701285 (setting legend outside plot)
         box = ax.get_position()
