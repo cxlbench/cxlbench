@@ -13,7 +13,8 @@ ARRAY_SIZES: list[int] = [
     430_080_000,
 ]
 
-THREADS: list[int] = [4, 8, 16, 32, 64]
+# 1, 2, 4, 6, 8, ..., 32
+THREADS: list[int] = [1, *[x * 2 for x in range(1, 17)]]
 
 WHITESPACE_REPLACE = re.compile(r"\s+")
 
@@ -46,7 +47,8 @@ def run_cmd(cmd: str) -> str:
 # Example (while cd'd into this directory):
 # python3 stream_gen_csv.py ../stream_c.exe --numa-nodes 0
 def main() -> None:
-    parser = argparse.ArgumentParser(description="STREAM benchmarking tool runner")
+    parser = argparse.ArgumentParser(
+        description="STREAM benchmarking tool runner")
 
     parser.add_argument(
         "binary_path",
@@ -94,7 +96,8 @@ def main() -> None:
             lst.extend(formatted)
             end = time.time()
             elapsed = round(end - start, 3)
-            print(f"Done in {elapsed}s : {threads} threads, {array_size} array size")
+            print(
+                f"Done in {elapsed}s : {threads} threads, {array_size} array size")
 
     header = lst[0]
     filtered = list(filter(lambda x: x != header, lst))
