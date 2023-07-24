@@ -54,10 +54,27 @@ SYSBENCH_CONTAINER_IMG_NAME="sysbenchmysql" # Sysbench container image name
 SysbenchDBName="sbtest"                     # Name of the MySQL Database to create and run Sysbench against
 # Sysbench options
 SYSBENCH_OPTS_TEMPLATE="--db-driver=mysql --mysql-db=${SysbenchDBName} --mysql-user=${SYSBENCH_USER} --mysql-password=${SYSBENCH_USER_PASSWORD} --mysql-host=mysqlINSTANCE --mysql-port=3306 --time=RUNTIME  --threads=THREADS --tables=TABLES --scale=SCALE"
+SYSBENCH_THREADS=1                          # Number of Sysbench workload generator threads. Use -W to override
+
+# === Misc Variables ===
+
+OPT_FUNCS_BEFORE=""                   # Optional functions that get called before the bechmarks start in the main loop
+OPT_FUNCS_AFTER=""                    # Optional functions that get called after the bechmarks complete in the main loop
 
 #################################################################################################
 # Functions
 #################################################################################################
+
+# THis function will be called if a user sends a SIGINT (Ctrl-C)
+function ctrl_c() {
+  info_msg "Received CTRL+C - aborting"
+  stop_containers
+  display_end_info
+  exit 1
+}
+
+# Handle Ctrl-C User Input
+trap ctrl_c SIGINT
 
 # Implementing 'goto' functionality
 # Usage: goto end
@@ -100,27 +117,29 @@ function verify_cmds() {
 function print_usage()
 {
     echo -e "${SCRIPT_NAME}: Usage"
-    echo "    ${SCRIPT_NAME} [-o output_prefix] [-p] [-r]"
-    echo "      -c                         : Cleanup. Completely remove all containers and the MySQL database"
-    echo "      -C <numa_node>             : [Required] CPU NUMA Node to run the MySQLServer"
-    #echo "      -e dram|tier|interleave|mm : [Required] Type of experiment to run"
-    echo "      -e dram|interleave         : [Required] Type of experiment to run"
-    echo "      -i <number_of_instances>   : The number of container intances to execute: Default 1"
-    echo "      -r                         : Run the Sysbench workload"
-    echo "      -p                         : Prepare the database"
-    echo "      -M <numa_node,..>          : [Required] Memory NUMA Node to run the MySQLServer"
-    echo "      -o <prefix>                : [Required] prefix of the output files: Default 'test'"
-    echo "      -s <scale>                 : Number of warehouses (scale): Default 10"
-    echo "      -S <numa_node>             : [Required] NUMA Node to run the Sysbench workers"
-    echo "      -t <number_of_tables>      : The number of tables per warehouse: Default 10"
-    echo "      -T <run time>              : Number of seconds to 'run' the benchmark"
-    echo "      -w                         : Warm the database"
-    echo "      -h                         : Print this message"
+    echo "    ${SCRIPT_NAME} OPTIONS"
+    echo "      -c                                          : Cleanup. Completely remove all containers and the MySQL database"
+    echo "      -C <numa_node>                              : [Required] CPU NUMA Node to run the MySQLServer"
+    echo "      -e dram|cxl|numainterleave|numapreferred|   : [Required] Memory environment"
+    echo "         kerneltpp"
+    echo "      -i <number_of_instances>                    : The number of container intances to execute: Default 1"
+    echo "      -r                                          : Run the Sysbench workload"
+    echo "      -p                                          : Prepare the database"
+    echo "      -M <numa_node,..>                           : [Required] Memory NUMA Node to run the MySQLServer"
+    echo "      -o <prefix>                                 : [Required] prefix of the output files: Default 'test'"
+    echo "      -s <scale>                                  : Number of warehouses (scale): Default 10"
+    echo "      -S <numa_node>                              : [Required] CPU NUMA Node to run the Sysbench workers"
+    echo "      -t <number_of_tables>                       : The number of tables per warehouse: Default 10"
+    echo "      -T <run time>                               : Number of seconds to 'run' the benchmark. Default ${SYSBENCH_RUNTIME}"
+    echo "      -w                                          : Warm the database. Default False."
+    echo "      -W <worker threads>                         : Maximum number of Sysbench worker threads. Default 1"
+    echo "      -h                                          : Print this message"
     echo " "
     echo "Example 1: Runs a single MySQL server on NUMA 0 and a single SysBench instance on NUMA Node1, "
-    echo "  prepares the database, runs the benchmark, and removes the database and containers when complete."
+    echo "  prepares the database, runs the benchmark from 1..1000 threads in powers of two, "
+    echo "  and removes the database and containers when complete."
     echo " "
-    echo "    $ ./${SCRIPT_NAME} -c -C 0 -e dram -i 1 -r -p -M 0 -o test -S1 -t 10 -w"
+    echo "    $ ./${SCRIPT_NAME} -c -C 0 -e dram -i 1 -r -p -M 0 -o test -S1 -t 10 -w -W 1000"
     echo " "
     echo "Example 2: Created the MySQL and Sysbench containers, runs the MySQL container on NUMA Node 0, the "
     echo "  Sysbench container on NUMA Node 1, then prepares the database and exits. The containers are left running."
@@ -134,16 +153,14 @@ function print_usage()
 # return: none
 function spin() {
     local -a marks=( '/' '-' '\' '|' )
-    local -a pids=("$@")
+    local spin_pid=$1
 
     while [[ true ]]; do
         printf '%s\r' "${marks[i++ % ${#marks[@]}]}"
         sleep 0.1
-        for pid in "${pids[@]}"; do
-            if ! kill -0 "$pid" 2> /dev/null; then
-                return
-            fi
-        done
+        #if ! kill -0 "$spin_pid" &> /dev/null; then
+        #    return
+        #fi
     done
 }
 
@@ -163,18 +180,21 @@ function dstat_find_location_of_db()
     fi
 }
 
-# From the Experiment (-e) argument, determine what numactl options to use
+# From the MEM_ENVIRONMENT (-e) argument, determine what numactl options to use
 # args: none
 # return: none
 function set_numactl_options()
 {
-    case "$EXPERIMENT" in
-        tier|mm|dram)
+    case "$MEM_ENVIRONMENT" in
+        dram|cxl|mm)
             NUMACTL_OPTION="--cpunodebind ${MYSQL_CPU_NUMA_NODE} --membind ${MYSQL_MEM_NUMA_NODE}"
-        ;;
-        interleave)
+            ;;
+        numapreferred)
+            NUMACTL_OPTION="--cpunodebind ${MYSQL_CPU_NUMA_NODE} --preferred ${MYSQL_MEM_NUMA_NODE}"
+            ;;
+        numainterleave)
             NUMACTL_OPTION="--cpunodebind ${MYSQL_CPU_NUMA_NODE} --interleave ${MYSQL_MEM_NUMA_NODE}"
-        ;;
+            ;;
     esac
 }
 
@@ -282,9 +302,9 @@ EOF
 
         info_msg "Building container image from Docker file..."
         podman build --rm -t $SYSBENCH_CONTAINER_IMG_NAME --file Dockerfile.sysbenchlua . &> ${OUTPUT_PATH}/podman_build.log &
-        pids[${i}]=$!
+        pids[0]=$!
 
-        spin "${pids[@]}" &
+        spin "${pids[0]}" &  # Start the spinner with the first process ID
         spin_pid=$!
         wait "${pids[@]}"
 
@@ -299,7 +319,7 @@ EOF
             fi
         done
 
-        kill $spin_pid 2> /dev/null
+        kill $spin_pid &> /dev/null
     fi
 
     if ${err_state}; then
@@ -315,8 +335,13 @@ EOF
 function start_mysql_containers()
 {
     local err_state=false
+    local timeout_duration=120  # Set the timeout duration
+    local start_time
 
     MYSQL_PORT=${MYSQL_START_PORT}
+
+    info_msg "MySQL Server containers will use memory NUMA Nodes '${MYSQL_MEM_NUMA_NODE}' with the '${MEM_ENVIRONMENT}' numa policy."
+
     for i in $(seq 1 ${PM_INSTANCES});
     do
 
@@ -356,7 +381,7 @@ function start_mysql_containers()
             if [ "$?" -ne "0" ];
             then
                 echo ""
-                failed_msg "[Creation of container mysql${i} failed. Exiting"
+                failed_msg "Creation of container mysql${i} failed. Exiting"
                 err_state=true
             fi
         fi
@@ -364,22 +389,31 @@ function start_mysql_containers()
         # Start the MySQL container on specific NUMA node if it's not already running
         if ! podman ps --format "{{.Names}}" | grep -q mysql${i} &> /dev/null; then
             info_msg "Starting MySQL container 'mysql${i}'..."
-            if numactl ${NUMACTL_OPTION} podman start mysql${i} &> /dev/null
+            if numactl ${NUMACTL_OPTION} podman start mysql${i} > /dev/null 2> ${OUTPUT_PATH}/podman_start_mysql${i}.err
             then
                 info_msg "Container 'mysql${i}' started successfully."
             else
-                error_msg "Container 'mysql${i}' failed to start. Check 'podman logs mysq${i}'"
+                error_msg "Container 'mysql${i}' failed to start. Check '${OUTPUT_PATH}/podman_start_mysql${i}.err'"
                 err_state=true
             fi
         else
             info_msg "MySQL container 'mysql${i}' is already running."
         fi
 
-        # Wait for the MySQL container to start
-        # TODO: Put a limit, otherwise, this could spin forever.
+        # Get the current time
+        start_time=$SECONDS
+
+        # Wait for the container to start
         info_msg "Waiting for container 'mysql${i}' to start..."
         while ! podman inspect -f '{{.State.Running}}' mysql${i} &> /dev/null; do
-            sleep 1
+            # Check if the timeout duration has been exceeded
+            current_time=$(($SECONDS - $start_time))
+            if [[ $current_time -gt $timeout_duration ]]; then
+                error_msg "Timeout: Container 'mysql${i}' did not start within 120 seconds."
+                break
+            fi
+
+            sleep 5
             echo -n "."
         done
 
@@ -400,6 +434,8 @@ function start_mysql_containers()
 function start_sysbench_containers()
 {
     local err_state=false
+    local timeout_duration=120  # Set the timeout duration
+    local start_time
 
     for i in $(seq 1 ${PM_INSTANCES});
     do
@@ -438,10 +474,20 @@ function start_sysbench_containers()
             info_msg "SysBench container 'sysbench${i}' is already running."
         fi
 
+        # Get the current time
+        start_time=$SECONDS
+
         # Wait for the container to start
         info_msg "Waiting for container 'sysbench${i}' to start..."
         while ! podman inspect -f '{{.State.Running}}' sysbench${i} &> /dev/null; do
-            sleep 1
+            # Check if the timeout duration has been exceeded
+            current_time=$(($SECONDS - $start_time))
+            if [[ $current_time -gt $timeout_duration ]]; then
+                error_msg "Timeout: Container 'sysbench${i}' did not start within 120 seconds."
+                break
+            fi
+
+            sleep 5
             echo -n "."
         done
 
@@ -462,10 +508,10 @@ function pause_for_stability()
 {
     local seconds
 
-    seconds=30
+    seconds=60
     total_seconds=$seconds
     while [ $seconds -gt 0 ]; do
-        echo -ne "${STR_INFO} Pausing for $total_seconds seconds to ensure the containers and services are up and running... $seconds\033[0K\r"
+        echo -ne "${STR_INFO} Pausing for $total_seconds seconds to give the containers time to initialize ... $seconds\033[0K\r"
         sleep 1
         seconds=$((seconds-1))
     done
@@ -566,11 +612,11 @@ function prepare_the_database()
         info_msg " ... Preparing database on mysql${i} ..."
         SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/4/" | sed "s/RUNTIME/60/" )
 
-        podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS prepare" &> ${OUTPUT_PATH}/${OUTPUT_PREFIX}_prepare.${i}.log &
-        pids[${i}]=$!
+        podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS prepare" &> ${OUTPUT_PATH}/${OUTPUT_PREFIX}prepare.${i}.log &
+        pids[${i}-1]=$!
     done
 
-    spin "${pids[@]}" &
+    spin "${pids[0]}" &  # Start the spinner with the first process ID
     spin_pid=$!
     wait "${pids[@]}"
 
@@ -584,7 +630,7 @@ function prepare_the_database()
         fi
     done
 
-    kill $spin_pid
+    kill $spin_pid &> /dev/null
 
     # Enable the REDO LOG
     for i in $(seq 1 ${PM_INSTANCES});
@@ -635,11 +681,11 @@ function warm_the_database()
     do
         info_msg " ... Warming database on mysql${i} ... "
         SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/4/" | sed "s/RUNTIME/${SYSBENCH_WARMTIME}/" )
-        podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS run" > ${OUTPUT_PATH}/${OUTPUT_PREFIX}_warmup.${i}.log &
-        pids[${i}]=$!
+        podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS run" > ${OUTPUT_PATH}/${OUTPUT_PREFIX}warmup.${i}.log &
+        pids[${i}-1]=$!
     done
 
-    spin "${pids[@]}" &
+    spin "${pids[0]}" &  # Start the spinner with the first process ID
     spin_pid=$!
     wait "${pids[@]}"
 
@@ -654,7 +700,7 @@ function warm_the_database()
         fi
     done
 
-    kill $spin_pid
+    kill $spin_pid &> /dev/null
 
     # Calculate the time to warmup the database
     duration=$(calc_time_duration ${start_time})
@@ -665,6 +711,36 @@ function warm_the_database()
     else
         return 0
     fi
+}
+
+# Uses the SYSBENCH_THREADS value (-W) to generate a sequence of threads to use
+# args: $1 = Maximum value in the sequence
+# return: array/list of integer values
+# Example:
+#     arg1 = 1024
+#     Returned sequence = "1 2 4 8 16 32 64 128 256 512 1024"
+generate_worker_thread_sequence() {
+    max_value=$1
+    seq=""
+
+    if ! [[ $max_value =~ ^[0-9]+$ ]]; then
+        seq="1"
+    elif [[ $max_value -eq 1 ]]; then
+        seq="1"
+    else
+        for ((i = 0; ; i++)); do
+            value=$((2 ** i))
+            if ((value > max_value)); then
+                if ((value / 2 != max_value)); then
+                    seq+=" $max_value"
+                fi
+                break
+            fi
+            seq+=" $value"
+        done
+    fi
+
+    echo "$seq"
 }
 
 # Run the 'tpcc.lua run' command inside the sysbench container
@@ -679,6 +755,8 @@ function run_the_benchmark()
     local err_state=false
     local duration          # Time taken to complete this task
     local start_time    # Start time in epoch seconds
+    local sequence      # Number of workers from 1 .. SYSBENCH_THREADS
+    local threads
 
     if [ -z ${RUN_TEST} ];
     then
@@ -690,21 +768,22 @@ function run_the_benchmark()
 
     start_time=$(date +%s)    # Start time in epoch seconds
 
-    # Initiate ramp up tests that start ever increasing number of clients
-    # Be careful not to exceed the CPU resources of the Sysbench container
-    # for threads in 1 2 4 8 16 32 64 128 150
-    for threads in 1 2 4 8 16 32 64 128 192 256 384 425 500 768 1000
+    # Initiate ramp up tests that start an increasing number of clients, e.g.:
+    # for threads in 1 2 4 8 16 32 64 128 192 256 384 425 500 768 1000
+    sequence=$(generate_worker_thread_sequence ${SYSBENCH_THREADS})
+
+    for threads in $sequence
     do
         info_msg " ... Start run with parameters threads=${threads} runtime=${SYSBENCH_RUNTIME} tables=${TABLES} ... "
-        DSTATFILE=${OUTPUT_PATH}/${OUTPUT_PREFIX}_dstat-${threads}-threads.csv
-        PODMAN_STATS_OUTPUT_FILE=${OUTPUT_PATH}/${OUTPUT_PREFIX}_podman_stats-${threads}-threads.out
+        DSTATFILE=${OUTPUT_PATH}/${OUTPUT_PREFIX}dstat-${threads}-threads.csv
+        PODMAN_STATS_OUTPUT_FILE=${OUTPUT_PATH}/${OUTPUT_PREFIX}podman_stats-${threads}-threads.out
 
         # Remove a previous restult file if present
-        rm -f ${DSTATFILE}
-        rm -f ${PODMAN_STATS_OUTPUT_FILE}
+        rm -f ${DSTATFILE} &> /dev/null
+        rm -f ${PODMAN_STATS_OUTPUT_FILE} &> /dev/null
 
         # Start the data collection
-        dstat -c -m -d -D ${DATADISK} --io --output ${DSTATFILE} > /dev/null &
+        dstat -c -m -d -D ${DATADISK} --io --output ${DSTATFILE} &> /dev/null &
         DSTAT_PID=$!
 
         podman stats --no-reset --format "table {{.Name}},{{.ID}},{{.CPUPerc}},{{.MemUsageBytes}},{{.MemPerc}},{{.NetIO}},{{.BlockIO}},{{.PIDS}}" &> ${PODMAN_STATS_OUTPUT_FILE=} &
@@ -714,8 +793,8 @@ function run_the_benchmark()
         do
             # Run the benchmark
             SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/${threads}/" | sed "s/RUNTIME/${SYSBENCH_RUNTIME}/" )
-            podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS run" &> ${OUTPUT_PATH}/${OUTPUT_PREFIX}_run_${threads}.${i}.log &
-            pids[${i}]=$!
+            podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS run" &> ${OUTPUT_PATH}/${OUTPUT_PREFIX}run_${threads}.${i}.log &
+            pids[${i}-1]=$!
         done
 
         for pid in ${pids[*]}; do
@@ -772,12 +851,12 @@ function cleanup_database()
     for i in $(seq 1 ${PM_INSTANCES});
     do
         SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/4/" | sed "s/RUNTIME/600/" )
-        podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS cleanup" &> ${OUTPUT_PATH}/${OUTPUT_PREFIX}_cleanup.${i}.log &
+        podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS cleanup" &> ${OUTPUT_PATH}/${OUTPUT_PREFIX}cleanup.${i}.log &
         # Check for failure here, bail out and clean up
-        pids[${i}]=$!
+        pids[${i}-1]=$!
     done
 
-    spin "${pids[@]}" &
+    spin "${pids[0]}" &  # Start the spinner with the first process ID
     spin_pid=$!
     wait "${pids[@]}"
 
@@ -792,7 +871,7 @@ function cleanup_database()
         fi
     done
 
-    kill $spin_pid
+    kill $spin_pid &> /dev/null
 
     # Remove the MySQL Data Directory
     if ! rm -rf "/${MYSQL_DATA_DIR}/mysql-$i" >/dev/null 2>&1
@@ -817,16 +896,16 @@ function get_container_logs() {
 
     for i in $(seq 1 ${PM_INSTANCES});
     do
-        if podman logs mysql${i} &> ${OUTPUT_PATH}/${OUTPUT_PREFIX}_mysql.${i}.log
+        if podman logs mysql${i} &> ${OUTPUT_PATH}/${OUTPUT_PREFIX}mysql.${i}.log
         then
-            info_msg "... Container 'mysql${i}' logs successfully written to '${OUTPUT_PATH}/${OUTPUT_PREFIX}_mysql.${i}.log'"
+            info_msg "... Container 'mysql${i}' logs successfully written to '${OUTPUT_PATH}/${OUTPUT_PREFIX}mysql.${i}.log'"
         else
             error_msg " ... Failed to collect the container logs for mysql${i}"
         fi
 
-        if podman logs sysbench${i} &> ${OUTPUT_PATH}/${OUTPUT_PREFIX}_sysbench.${i}.log
+        if podman logs sysbench${i} &> ${OUTPUT_PATH}/${OUTPUT_PREFIX}sysbench.${i}.log
         then
-            info_msg "... Container 'sysbench${i}' logs successfully written to '${OUTPUT_PATH}/${OUTPUT_PREFIX}_sysbench.${i}.log'"
+            info_msg "... Container 'sysbench${i}' logs successfully written to '${OUTPUT_PATH}/${OUTPUT_PREFIX}sysbench.${i}.log'"
         else
             error_msg " ... Failed to collect the container logs for sysbench${i}"
         fi
@@ -854,7 +933,7 @@ function get_mysql_config() {
         # Dump the MySQL database variables
         if podman exec -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD}" -i mysql${i} mysql -uroot -e "SHOW GLOBAL VARIABLES;" &> ${OUTPUT_PATH}/mysql_global_variables.out
         then
-            info_msg "MySQL Global Variables successfully written to '${OUTPUT_PATH}/mysql_global_variables.out'"
+            info_msg "MySQL Global Variables successfully written to '${OUTPUT_PATH}/mysql_global_variables.mysql${i}.out'"
         else
             error_msg "Failed to acquire the MySQL Global Variables."
         fi
@@ -862,7 +941,7 @@ function get_mysql_config() {
         # Gather the total database size including all the tables
         if podman exec -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD}" -i mysql${i} mysql -uroot -e "SELECT table_schema 'Database Name', sum(data_length + index_length) / (1024 * 1024) 'Database Size in MB' FROM information_schema.TABLES WHERE table_schema = '${SysbenchDBName}' GROUP BY table_schema;" &> ${OUTPUT_PATH}/mysql_dbsize.out
         then
-            info_msg "MySQL Database size successfully written to '${OUTPUT_PATH}/mysql_dbsize.out'"
+            info_msg "MySQL Database size successfully written to '${OUTPUT_PATH}/mysql_dbsize.mysql${i}.out'"
         else
             error_msg "Failed to acquire the MySQL database size."
         fi
@@ -1063,6 +1142,196 @@ function check_selinux_enforce() {
     return 0
 }
 
+# Check if Kernel Transparent Page Placement is Enabled or Disabled
+# args: None
+# return: True (1) or False (0)
+function is_kernel_tpp_enabled() {
+    local numa_balancing=0
+    local demotion_enabled=0
+    local result=0
+
+    # Check if Kernel Tiering exists and is enabled or disabled
+    if [[ -f "/proc/sys/kernel/numa_balancing" ]];
+    then
+        numa_balancing=$(cat "/proc/sys/kernel/numa_balancing")
+
+        case "${numa_balancing}" in
+        0) # NUMA_BALANCING_DISABLED
+            #info_msg "Kernel TPP is Disabled (NUMA_BALANCING_DISABLED)"
+            result=0
+            ;;
+        1) # NUMA_BALANCING_NORMAL
+            #info_msg "Kernel TPP is Disabled (NUMA_BALANCING_NORMAL)"
+            result=0
+            ;;
+        2) # NUMA_BALANCING_MEMORY_TIERING
+            #info_msg "Kernel TPP is Enabled (NUMA_BALANCING_MEMORY_TIERING)"
+            result=1
+            ;;
+        *)
+            #info_msg "Kernel TPP is Unknown (${numa_balancing})"
+            result=0
+            ;;
+        esac
+    else
+        error_msg "'/proc/sys/kernel/numa_balancing' does not exist. Kernel doesn't support TPP"
+        result=0
+    fi
+
+    # Check if Kernel page demotion exists and is enabled or disabled
+    if [[ -f "/sys/kernel/mm/numa/demotion_enabled" ]];
+    then
+        demotion_enabled=$(cat "/sys/kernel/mm/numa/demotion_enabled")
+
+        case "${demotion_enabled}" in
+        0|"false") # Disabled
+            #info_msg "Kernel TPP Page Demotion is Disabled"
+            result=0
+            ;;
+        1|"true") # Enabled
+            #info_msg "Kernel TPP Page Demotion is Enabled"
+            result=1
+            ;;
+        *)
+            #info_msg "Kernel TPP Page Demotion is Unknown (${demotion_enabled})"
+            result=0
+            ;;
+        esac
+    else
+        error_msg "'/sys/kernel/mm/numa/demotion_enabled' does not exist. Kernel doesn't support TPP Page Demotion."
+        result=0
+    fi
+
+    # Return True (1) or False (0)
+    echo "$result"
+}
+
+# Enable the Kernel TPP feature. Must be root to do this!
+# args: none
+# returns: nothing
+function enable_kernel_tpp() {
+    local err_state=false 
+
+    if echo 2 > /proc/sys/kernel/numa_balancing;
+    then
+        error_msg "Failed to enable Kernel Memory Tiering. This Kernel may not support tiering."
+        err_state=true
+    else
+        info_msg "Successfully enabled Kernel Memory Tiering"
+        # Disable Kernel TPP after the benchmarks complete
+        OPT_FUNCS_AFTER="disable_kernel_tpp"
+    fi
+    
+    if echo 1 > /sys/kernel/mm/numa/demotion_enabled;
+    then
+        error_msg "Failed to enable Kernel Memory Tiering Page Demotion"
+        err_state=true
+    else
+        info_msg "Successfully enabled Kernel Memory Tiering Page Demotion"
+        # Disable Kernel TPP after the benchmarks complete
+        OPT_FUNCS_AFTER="disable_kernel_tpp"
+    fi
+
+    if ${err_state}; then
+        return 1
+    else
+        return 0
+    fi
+}
+
+# Disable the Kernel TPP feature. Must be root to do this!
+# args: none
+# returns: nothing
+function disable_kernel_tpp() {
+    local err_state=false 
+
+    if echo 1 > /proc/sys/kernel/numa_balancing;
+    then
+        error_msg "Failed to enable Kernel Memory Tiering"
+        err_state=true
+    else
+        info_msg "Successfully enabled Kernel Memory Tiering"
+    fi
+    
+    if echo 0 > /sys/kernel/mm/numa/demotion_enabled;
+    then
+        error_msg "Failed to enable Kernel Memory Tiering Page Demotion"
+        err_state=true
+    else
+        info_msg "Successfully enabled Kernel Memory Tiering Page Demotion"
+    fi
+
+    if ${err_state}; then
+        return 1
+    else
+        return 0
+    fi
+}
+
+# Check if the Kernel TPP feature is required or not.
+# The user can explicityly use TPP with (-e kerneltpp)
+# Kernel TPP should be disabled for all other tests
+function kernel_tpp_feature() {
+    # Linux Kernel Transparent Page Placement (aka Tiering)
+    # Debug statements
+    if [[ ("$MEM_ENVIRONMENT" == "kerneltpp" || "$MEM_ENVIRONMENT" == "tpp") ]]
+    then
+        # TPP is disabled. If the user is root, try to auto-enable it. Otherwise tell the user to enable it manually
+        if [[ $(is_kernel_tpp_enabled) -eq 0 ]] && [[ $EUID -ne 0 ]]; # User is not root, so we can't auto-enable TPP
+        then
+            error_msg "Please enable Linux Kernel Transparent Page Placement (TPP), then re-run this test. As root, run:"
+            info_msg " $ sudo echo 2 > /proc/sys/kernel/numa_balancing"
+            info_msg " $ sudo echo 1 > /sys/kernel/mm/numa/demotion_enabled"
+            exit 1
+        elif [[ $(is_kernel_tpp_enabled) -eq 0 ]] && [[ $EUID -eq 0 ]]; # User is root
+        then
+            enable_kernel_tpp
+        elif [[ $(is_kernel_tpp_enabled) -eq 1 ]]; # TPP is enabled
+        then
+            info_msg "Kernel Transparent Page Placement is Enabled"
+        else # Should not reach
+            error_msg "An unknown memory environment setup has been detected that cannot be handled"
+            error_msg "is_kernel_tpp_enabled returned '$(is_kernel_tpp_enabled)'"
+            error_msg "EUID: $EUID"
+        fi
+    else # TPP should be disabled for all other memory test environments
+        if [[ $(is_kernel_tpp_enabled) -eq 1 ]] && [[ $EUID -ne 0 ]]; # User is not root
+        then
+            error_msg "Kernel Transparent Page Placement (TPP) is Enabled. Please disable it"
+            info_msg " $ sudo echo 1 > /proc/sys/kernel/numa_balancing"
+            info_msg " $ sudo echo 0 > /sys/kernel/mm/numa/demotion_enabled"
+        elif [[ $(is_kernel_tpp_enabled) -eq 1 ]] && [[ $EUID -eq 0 ]]; # User is root
+        then
+            disable_kernel_tpp
+        elif [[ $(is_kernel_tpp_enabled) -eq 0 ]]; # TPP is disabled
+        then
+            info_msg "Kernel Transparent Page Placement (TPP) is Disabled"
+        else # Should not reach
+            error_msg "An unknown memory environment setup has been detected that cannot be handled"
+            error_msg "is_kernel_tpp_enabled returned '$(is_kernel_tpp_enabled)'"
+            error_msg "EUID: $EUID"
+        fi
+    fi
+}
+
+# Process the TPCC results to CSV files, one per MySQL container
+# args: none
+# returns: nothing
+function process_tpcc_results_to_csv() {
+    cd "${OUTPUT_PATH}"
+    for i in $(seq 1 ${PM_INSTANCES});
+    do
+        if ! ../utils/tpcc_results_to_csv.py *run_*.${i}.*; then
+            error_msg "Failed to process the TPCC run results"
+        else
+            filename=$(basename "${file}")
+            mv tpcc_results.csv "tpcc_results.${i}.${filename}.csv"
+            info_msg "TPC-C run results for MySQL Instance ${i}: tpcc_results.${i}.csv"
+        fi
+    done
+    cd ..
+}
+
 #################################################################################################
 # Main
 #################################################################################################
@@ -1074,8 +1343,11 @@ then
     exit 1
 fi
 
+# Detect Terminal Type and setup message formats
+auto_detect_terminal_colors
+
 # Process the command line arguments
-while getopts 'cC:e:hi:M:o:prs:S:t:T:w' opt; do
+while getopts 'cC:e:?hi:M:o:prs:S:t:T:wW:' opt; do
     case "$opt" in
         c)
             CLEANUP=1
@@ -1084,8 +1356,7 @@ while getopts 'cC:e:hi:M:o:prs:S:t:T:w' opt; do
             MYSQL_CPU_NUMA_NODE=${OPTARG}
             ;;
         e)
-            # Experient values are dram|interleave|tier|mm
-            EXPERIMENT=${OPTARG}
+            MEM_ENVIRONMENT=${OPTARG}
             ;;
         i)
             PM_INSTANCES=${OPTARG}
@@ -1117,7 +1388,16 @@ while getopts 'cC:e:hi:M:o:prs:S:t:T:w' opt; do
         w)
             WARM_DB=1
             ;;
-        ?|h)
+        W)
+            SYSBENCH_THREADS=${OPTARG}
+
+            # Validate SYSBENCH_THREADS is a valid integer
+            if ! [[ $SYSBENCH_THREADS =~ ^[1-9][0-9]*$ ]]; then
+                error_msg "Invalid value for '-W'. Please provide a valid integer value greater than or equal to 1."
+                exit 1
+            fi
+            ;;
+        h|\?|*)
             print_usage
             exit
             ;;
@@ -1127,15 +1407,30 @@ done
 if [[ ( -z ${RUN_TEST} && -z ${PREPARE_DB} && -z ${CLEANUP} && -z ${WARM_DB}) ]];
 then
     print_usage
-    echo "    One or both of -c or -r or -p options are needed to proceed"
+    error_msg "One or both of -c or -r or -p options are needed to proceed"
     exit 1
 fi
 
-if [[ ("$EXPERIMENT" != "tier" && "$EXPERIMENT" != "interleave" && "$EXPERIMENT" != "mm" && "$EXPERIMENT" != "dram") ]];
+if [[ ("$MEM_ENVIRONMENT" != "numapreferred" && "$MEM_ENVIRONMENT" != "numainterleave" && "$MEM_ENVIRONMENT" != "mm" && "$MEM_ENVIRONMENT" != "dram" && "$MEM_ENVIRONMENT" != "cxl" && "$MEM_ENVIRONMENT" != "kerneltpp" && "$MEM_ENVIRONMENT" != "tpp") ]];
 then
-    error_msg "-e must be specified"
+    error_msg "Unknown memory environment '${MEM_ENVIRONMENT}'"
     print_usage
     exit 1
+else
+    # Validate the user provided two or more NUMA nodes in the (-M) option for numactl options
+    if [[ ("$MEM_ENVIRONMENT" == "numapreferred" || "$MEM_ENVIRONMENT" == "numainterleave" ) ]]
+    then
+        # Count the number of values separated by commas
+        IFS=',' read -ra NUMA_NODES <<< "$MYSQL_MEM_NUMA_NODE"
+        NUM_NODE_COUNT=${#NUMA_NODES[@]}
+
+        # Check if the variable has two or more values separated by commas
+        if [[ $NUM_NODE_COUNT -lt 2 ]]; then
+            error_msg "Two or more NUMA node must be specified with (-M) with the '${MEM_ENVIRONMENT}' (-e) option"
+            print_usage
+            exit 1
+        fi
+    fi
 fi
 
 if [[ ( -z ${MYSQL_CPU_NUMA_NODE} || -z ${MYSQL_MEM_NUMA_NODE}) ]];
@@ -1158,9 +1453,15 @@ then
     warn_msg "Warmup (-w) was not specified for this run. Results may not be reproducible if the database was not warmed up before this run"
 fi
 
+# Check if the user provided a prefix/test name, and use it
 if [ -z ${OUTPUT_PREFIX} ];
 then
-    OUTPUT_PREFIX="test"
+    OUTPUT_PREFIX=""
+else 
+    # Set the OUTPUT_PREFIX for files
+    OUTPUT_PREFIX+="_"
+    # Set the OUTPUT_PATH
+    OUTPUT_PATH="./${OUTPUT_PREFIX}${SCRIPT_NAME}.`hostname`.`date +"%m%d-%H%M"`"
 fi
 
 # Verify the mandatory commands and utilities are installed. Exit on error.
@@ -1172,9 +1473,6 @@ fi
 # Initialize the environment
 init
 
-# Detect Terminal Type
-auto_detect_terminal_colors
-
 # Save STDOUT and STDERR logs to the data collection directory
 log_stdout_stderr "${OUTPUT_PATH}"
 
@@ -1182,7 +1480,23 @@ log_stdout_stderr "${OUTPUT_PATH}"
 display_start_info "$*"
 
 # Define the array of functions to call in the correct order
-functions=("check_selinux_enforce" "check_mysql_data_dir" "check_cgroups" "create_network" "set_numactl_options" "create_sysbench_container_image" "start_sysbench_containers" "check_my_cnf_dir_exists" "start_mysql_containers" "pause_for_stability" "create_mysql_databases" "prepare_the_database" "get_mysql_config" "warm_the_database" "run_the_benchmark" "cleanup_database" "get_container_logs" "stop_containers" "remove_containers")
+# functions=("check_selinux_enforce" "check_mysql_data_dir" "check_cgroups" "create_network" "set_numactl_options" "${OPT_FUNCS_BEFORE}" "create_sysbench_container_image" "start_sysbench_containers" "check_my_cnf_dir_exists" "start_mysql_containers" "pause_for_stability" "create_mysql_databases" "prepare_the_database" "get_mysql_config" "warm_the_database" "run_the_benchmark" "cleanup_database" "get_container_logs" "stop_containers" "remove_containers" "${OPT_FUNCS_AFTER}")
+
+# Define the array of functions to call in the correct order
+functions=("check_selinux_enforce" "check_mysql_data_dir" "check_cgroups" "create_network" "set_numactl_options" "kernel_tpp_feature")
+
+# Add functions from OPT_FUNCS_BEFORE if it is set
+if [ -n "$OPT_FUNCS_BEFORE" ]; then
+    functions+=("$OPT_FUNCS_BEFORE")
+fi
+
+# Add remaining functions
+functions+=("create_sysbench_container_image" "start_sysbench_containers" "check_my_cnf_dir_exists" "start_mysql_containers" "pause_for_stability" "create_mysql_databases" "prepare_the_database" "get_mysql_config" "warm_the_database" "run_the_benchmark" "cleanup_database" "get_container_logs" "stop_containers" "remove_containers" "process_tpcc_results_to_csv")
+
+# Add functions from OPT_FUNCS_AFTER if it is set
+if [ -n "$OPT_FUNCS_AFTER" ]; then
+    functions+=("$OPT_FUNCS_AFTER")
+fi
 
 # Iterate over the array of functions and call them one by one
 # Handle the return value: 0=Success, 1=Failure
@@ -1193,7 +1507,7 @@ for function in "${functions[@]}"; do
 
     # Check if an error occurred
     if [ $return_value -ne 0 ]; then
-        echo "An error occurred in $function. Exiting."
+        error_msg "An error occurred in '$function'. Exiting."
         goto out
     fi
 done

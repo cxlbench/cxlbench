@@ -379,9 +379,9 @@ int main(int argc, char **argv) {
         tuned_STREAM_Triad(scalar, a2, b2, c2);
 #else
 #pragma omp parallel for
-        // iv. triad node2-to-node1 (read b2, c2, write a2)
+        // iv. triad node2-to-node1 (read b2, c2, write a1)
         for (j = 0; j < stream_array_size; j++)
-            a2[j] = b2[j] + scalar * c2[j];
+            a1[j] = b2[j] + scalar * c2[j];
 #endif
         times[3][k] = mysecond() - times[3][k];
 
@@ -441,7 +441,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    printf("Function    Best Rate MB/s  Avg time     Min time     Max time\n");
+    printf("Function        BestRateMBs AvgTime      MinTime      MaxTime\n");
     for (j = 0; j < TIMES_LEN; j++) {
         avgtime[j] = avgtime[j] / (double)(ntimes - 1);
 
@@ -701,8 +701,8 @@ void checkSTREAMresults() {
         a1j = scalar * b2j;
         // iii. add node1-to-node2 (read a1, b1, write c2)
         c2j = a1j + b1j;
-        // iv. triad node2-to-node1 (read b2, c2, write a2)
-        a2j = b2j + scalar * c2j;
+        // iv. triad node2-to-node1 (read b2, c2, write a1)
+        a1j = b2j + scalar * c2j;
         // v. copy node2-to-node1 (read a2, write b1)
         b1j = a2j;
         // vi. scale node1-to-node2 (read b1, write a2)
