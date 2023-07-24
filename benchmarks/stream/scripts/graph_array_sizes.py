@@ -30,15 +30,15 @@ def main() -> None:
     args = parser.parse_args()
 
     csv_file = args.csv_file
-    dir = args.dir
+    directory = args.dir
+
+    if not os.path.isdir(directory):
+        os.makedirs(directory)
 
     df = pd.read_csv(csv_file).iloc[:, 0:4]
 
     array_sizes = df["ArraySize"].drop_duplicates()
     functions = df["Function"].drop_duplicates()
-
-    if not os.path.isdir(dir):
-        os.makedirs(dir)
 
     for array_size in array_sizes:
         filtered = df[df["ArraySize"] == array_size]
@@ -73,7 +73,7 @@ def main() -> None:
         ax.set_ylabel("Best Rate (MB/s)")
         ax.set_title(f"Array size: {array_size}")
 
-        f = dir + f"{array_size}.png"
+        f = directory + f"{array_size}.png"
         fig.savefig(f)
         fig.clf()
 
