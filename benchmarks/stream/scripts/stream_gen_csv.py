@@ -58,7 +58,6 @@ def main() -> None:
 
     parser.add_argument(
         "--numa-nodes",
-        dest="numa_nodes",
         required=True,
         type=str,
         help="Numa node(s) to be allocated",
@@ -66,9 +65,15 @@ def main() -> None:
 
     parser.add_argument(
         "--output",
-        dest="output",
         type=str,
         help="Where the output file should be located",
+    )
+
+    parser.add_argument(
+        "--drop-array-sizes",
+        type=int,
+        nargs='+',
+        help="The arrays that should not be ran"
     )
 
     args = parser.parse_args()
@@ -81,8 +86,10 @@ def main() -> None:
 
     lst = []
 
+    array_sizes = [x for x in ARRAY_SIZES if x not in args.drop_array_sizes]
+
     for threads in THREADS:
-        for array_size in ARRAY_SIZES:
+        for array_size in array_sizes:
             cmd = (
                 f"export OMP_NUM_THREADS={threads} && "
                 f"numactl --cpunodebind=0 "

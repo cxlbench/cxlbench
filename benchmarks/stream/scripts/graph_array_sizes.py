@@ -1,9 +1,10 @@
-import pandas as pd
-import matplotlib.pyplot as plt
+import argparse
 import os
 from pathlib import Path
-import argparse
+
+import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from scipy.interpolate import make_interp_spline
 
 
@@ -45,10 +46,10 @@ def main() -> None:
         fig = plt.figure()
         ax = plt.subplot(111)
 
-        for function in functions:
+        for func in functions:
             tmp_df: pd.DataFrame = (
                 # https://stackoverflow.com/a/27975230 (Filtering by row value)
-                filtered[filtered["Function"].str.contains(function)]
+                filtered[filtered["Function"] == func]
                 .drop(columns=["Function"])
                 .groupby(["Threads"])["BestRateMBs"]
                 .mean()
@@ -59,7 +60,7 @@ def main() -> None:
             x_new = np.linspace(x.min(), x.max(), 300)
             spline = make_interp_spline(x, y)
             y_smooth = spline(x_new)
-            ax.plot(x_new, y_smooth, label=function)
+            ax.plot(x_new, y_smooth, label=func)
 
         # https://stackoverflow.com/a/4701285 (setting legend outside plot)
         box = ax.get_position()
