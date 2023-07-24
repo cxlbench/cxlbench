@@ -4,7 +4,7 @@ import os
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from utils import file_exists, int_to_human, smooth_line
+from utils import file_exists, smooth_line, int_to_human
 
 # Supressing a warning that appears when more than 20 figures are opened
 plt.rcParams["figure.max_open_warning"] = 0
