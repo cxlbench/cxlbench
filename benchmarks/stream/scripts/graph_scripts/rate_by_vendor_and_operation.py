@@ -6,7 +6,7 @@ import pandas as pd
 
 from utils import file_exists, int_to_human, smooth_line
 
-# Supressing a warning that appears when more than 20 figures are opened
+# Suppressing a warning that appears when more than 20 figures are opened
 plt.rcParams["figure.max_open_warning"] = 0
 
 
