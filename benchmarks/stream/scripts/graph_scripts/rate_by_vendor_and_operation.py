@@ -35,7 +35,7 @@ def main() -> None:
         "--array-sizes",
         type=int,
         nargs="+",
-        required=True,
+        required=False,
         help="The array sizes to be graphed",
     )
 
@@ -43,7 +43,7 @@ def main() -> None:
         "--functions",
         type=str,
         nargs="+",
-        required=True,
+        required=False,
         help="The function to be graphed",
     )
 
@@ -67,10 +67,12 @@ def main() -> None:
     if not os.path.isdir(directory):
         os.makedirs(directory)
 
-    # array_sizes = v0["ArraySize"].drop_duplicates()
-    # functions = v0["Function"].drop_duplicates()
-
     dfs = [(f, pd.read_csv(f).iloc[:, 0:4]) for f in csv_files]
+
+    if not array_sizes:
+        array_sizes = dfs[0][1]["ArraySize"].drop_duplicates()
+    if not functions:
+        functions = dfs[0][1]["Function"].drop_duplicates()
 
     for array_size in array_sizes:
         for func in functions:
@@ -89,10 +91,6 @@ def main() -> None:
                 x, y = smooth_line(filtered.index, filtered.values)
 
                 ax.plot(x, y, label=str(abs_file_path.stem))
-
-                # ax.plot(
-                #     x0, y0, label=f"{func}-{args.c0}", color=colors[i], linestyle="--"
-                # )
 
             # https://stackoverflow.com/a/4701285 (setting legend outside plot)
             box = ax.get_position()
