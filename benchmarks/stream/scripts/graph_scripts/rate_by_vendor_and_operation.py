@@ -1,6 +1,5 @@
 import argparse
 import os
-import humanize
 
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
@@ -18,112 +17,119 @@ def main() -> None:
     )
 
     parser.add_argument(
-        "vendor_csv_file0", type=file_exists, help="The first vendor type to process"
+        "--csv-files",
+        type=file_exists,
+        nargs="+",
+        required=True,
+        help="The first vendor type to process",
     )
 
     parser.add_argument(
-        "vendor_csv_file1", type=file_exists, help="The second vendor type to process"
-    )
-
-    parser.add_argument("dir", type=str, help="Directory to dump all the graphs into")
-
-    parser.add_argument(
-        "--c0", required=True, type=str, help="Short name for the first vendor"
+        "--output-dir",
+        type=str,
+        required=True,
+        help="Directory to dump all the graphs into",
     )
 
     parser.add_argument(
-        "--c1", required=True, type=str, help="Short name for the second vendor"
-    )
-
-    parser.add_argument(
-        "--drop-array-sizes",
+        "--array-sizes",
         type=int,
         nargs="+",
-        help="The array sizes to be excluded from the graphs",
+        required=True,
+        help="The array sizes to be graphed",
     )
 
     parser.add_argument(
-        "--title", type=str, help="The title that the graphs should have"
+        "--functions",
+        type=str,
+        nargs="+",
+        required=True,
+        help="The function to be graphed",
+    )
+
+    parser.add_argument(
+        "--title",
+        required=False,
+        type=str,
+        help="The title that the graphs should have",
     )
 
     args = parser.parse_args()
 
-    directory = args.dir
+    csv_files, directory, array_sizes, functions, title = (
+        args.csv_files,
+        args.output_dir,
+        args.array_sizes,
+        args.functions,
+        args.title,
+    )
 
     if not os.path.isdir(directory):
         os.makedirs(directory)
 
-    v0, v1 = (
-        pd.read_csv(args.vendor_csv_file0).iloc[:, 0:4],
-        pd.read_csv(args.vendor_csv_file1).iloc[:, 0:4],
-    )
+    # array_sizes = v0["ArraySize"].drop_duplicates()
+    # functions = v0["Function"].drop_duplicates()
 
-    colors = ["red", "blue", "green", "orange"]
-
-    array_sizes = v0["ArraySize"].drop_duplicates()
-    functions = v0["Function"].drop_duplicates()
+    dfs = [(f, pd.read_csv(f).iloc[:, 0:4]) for f in csv_files]
 
     for array_size in array_sizes:
-        filtered_v0 = v0[v0["ArraySize"] == array_size]
-        filtered_v1 = v1[v1["ArraySize"] == array_size]
+        for func in functions:
+            fig, ax = plt.figure(), plt.subplot(111)
 
-        fig = plt.figure()
-        ax = plt.subplot(111)
+            for abs_file_path, df in dfs:
+                # https://stackoverflow.com/a/27975230 (Filtering by row value)
+                filtered = df[df["ArraySize"] == array_size]
+                filtered = (
+                    filtered[filtered["Function"] == func]
+                    .drop(columns=["Function"])
+                    .groupby(["Threads"])["BestRateMBs"]
+                    .mean()
+                )
 
-        for i, func in enumerate(functions):
-            # https://stackoverflow.com/a/27975230 (Filtering by row value)
+                x, y = smooth_line(filtered.index, filtered.values)
 
-            df0 = (
-                filtered_v0[filtered_v0["Function"] == func]
-                .drop(columns=["Function"])
-                .groupby(["Threads"])["BestRateMBs"]
-                .mean()
+                ax.plot(x, y, label=str(abs_file_path.stem))
+
+                # ax.plot(
+                #     x0, y0, label=f"{func}-{args.c0}", color=colors[i], linestyle="--"
+                # )
+
+            # https://stackoverflow.com/a/4701285 (setting legend outside plot)
+            box = ax.get_position()
+            ax.set_position(
+                [box.x0, box.y0 + box.height * 0.1, box.width, box.height * 0.9]
             )
-            df1 = (
-                filtered_v1[filtered_v1["Function"] == func]
-                .drop(columns=["Function"])
-                .groupby(["Threads"])["BestRateMBs"]
-                .mean()
+            ax.legend(
+                loc="upper center",
+                bbox_to_anchor=(0.5, -0.125),
+                fancybox=True,
+                shadow=True,
+                ncol=5,
             )
 
-            (x0, y0), (x1, y1) = (
-                smooth_line(df0.index, df0.values),
-                smooth_line(df1.index, df1.values),
+            ax.yaxis.set_major_formatter(
+                FuncFormatter(
+                    lambda x, _: int_to_human(x)
+                    if x < 1_000_000
+                    else int_to_human(x, fmt="%.1f")
+                )
             )
 
-            ax.plot(x0, y0, label=f"{func}-{args.c0}", color=colors[i])
-            ax.plot(x1, y1, label=f"{func}-{args.c1}", color=colors[i], linestyle="--")
+            human_array_size = int_to_human(array_size, replace_long=False)
 
-        # https://stackoverflow.com/a/4701285 (setting legend outside plot)
-        box = ax.get_position()
-        ax.set_position(
-            [box.x0, box.y0 + box.height * 0.1, box.width, box.height * 0.9]
-        )
-        ax.legend(
-            loc="upper center",
-            bbox_to_anchor=(0.5, -0.125),
-            fancybox=True,
-            shadow=True,
-            ncol=5,
-        )
+            ax.set_xlabel("Threads")
+            ax.set_ylabel("Best Rate (MB/s)")
 
-        ax.yaxis.set_major_formatter(
-            FuncFormatter(lambda x, _: int_to_human(x, fmt="%.1f"))
-        )
+            default_title = f"Function: {func}, Array size: {human_array_size}"
 
-        human_array_size = int_to_human(array_size, replace_long=False)
+            if title := args.title:
+                ax.set_title(f"{title}\n{default_title}")
+            else:
+                ax.set_title(default_title)
 
-        ax.set_xlabel("Threads")
-        ax.set_ylabel("Best Rate (MB/s)")
-
-        if title := args.title:
-            ax.set_title(f"{title}, Array size: {human_array_size}")
-        else:
-            ax.set_title(f"Array size: {human_array_size}")
-
-        f = directory + f"{human_array_size.replace(' ', '')}.png"
-        fig.savefig(f)
-        fig.clf()
+            f = directory + f"{func}-{human_array_size.replace(' ', '')}.png"
+            fig.savefig(f)
+            fig.clf()
 
 
 if __name__ == "__main__":
