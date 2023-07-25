@@ -65,6 +65,7 @@ def main() -> None:
     parser.add_argument(
         "--ntimes",
         type=int,
+        required=False,
         default=100,
         help="How many times each for loop should run for",
     )
@@ -72,14 +73,24 @@ def main() -> None:
     parser.add_argument(
         "--output",
         type=str,
+        required=False,
         help="Where the output file should be located",
     )
 
     parser.add_argument(
-        "--drop-array-sizes",
+        "--array-sizes",
         type=int,
+        required=False,
         nargs="+",
-        help="The arrays that should not be ran",
+        help="The arrays that should be ran",
+    )
+
+    parser.add_argument(
+        "--threads",
+        type=int,
+        required=False,
+        nargs="+",
+        help="The thread counts that the program should use",
     )
 
     args = parser.parse_args()
@@ -92,12 +103,13 @@ def main() -> None:
 
     lst = []
 
-    array_sizes = [x for x in ARRAY_SIZES if x not in args.drop_array_sizes]
+    array_sizes = args.array_sizes if args.array_sizes else ARRAY_SIZES
+    threads = args.threads if args.threads else THREADS
 
-    for threads in THREADS:
+    for thread_count in threads:
         for array_size in array_sizes:
             cmd = (
-                f"export OMP_NUM_THREADS={threads} && "
+                f"export OMP_NUM_THREADS={thread_count} && "
                 f"numactl --cpunodebind=0 "
                 f"./{args.binary_path} --ntimes {args.ntimes} "
                 f"--numa-nodes {args.numa_nodes} --array-size {array_size}"
@@ -105,11 +117,13 @@ def main() -> None:
 
             start = time.time()
             cmd_stdout = run_cmd(cmd)
-            formatted = format_stream_output(cmd_stdout, threads, array_size)
+            formatted = format_stream_output(cmd_stdout, thread_count, array_size)
             lst.extend(formatted)
             end = time.time()
             elapsed = round(end - start, 3)
-            print(f"Done in {elapsed}s : {threads} threads, {array_size} array size")
+            print(
+                f"Done in {elapsed}s : {thread_count} threads, {array_size} array size"
+            )
 
     header = lst[0]
     filtered = list(filter(lambda x: x != header, lst))
