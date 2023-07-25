@@ -1,23 +1,17 @@
-import pandas as pd
-from pathlib import Path
 import argparse
 
+import humanize
+import pandas as pd
 
-def file_exists(file: str) -> Path:
-    path = Path(file)
-
-    if not path.is_file():
-        raise argparse.ArgumentTypeError(f"File '{file}' does not exist.")
-
-    return path
+from utils import file_exists
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description='Get the best bandwidths from a CSV file')
+        description="Get the best bandwidths from a CSV file"
+    )
 
-    parser.add_argument('csv_file', type=file_exists,
-                        help='CSV file to process')
+    parser.add_argument("csv_file", type=file_exists, help="CSV file to process")
 
     args = parser.parse_args()
 
@@ -34,9 +28,13 @@ def main() -> None:
         df.columns = ["Threads", "ArraySize", "Function", "BestRateMBs"]
 
     idx = df.groupby("ArraySize")["BestRateMBs"].idxmax()
-    result_df = df.loc[idx]
+    df = df.loc[idx]
 
-    print(result_df.to_string(index=False))
+    df["ArraySize"] = df["ArraySize"].apply(
+        lambda x: humanize.intword(x, format="%.0f")
+    )
+
+    print(df.to_string(index=False))
 
 
 if __name__ == "__main__":
