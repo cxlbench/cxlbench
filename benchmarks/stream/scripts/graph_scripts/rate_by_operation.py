@@ -2,6 +2,7 @@ import argparse
 import os
 
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter
 import pandas as pd
 
 from utils import file_exists, int_to_human, smooth_line
@@ -12,14 +13,17 @@ def main() -> None:
         description="Create graphs from previously generated CSV files"
     )
 
-    parser.add_argument("csv_file", type=file_exists, help="CSV file to process")
+    parser.add_argument(
+        "-c", "--csv_file", type=file_exists, help="CSV file to process"
+    )
 
-    parser.add_argument("dir", type=str, help="Directory to dump all the graphs into")
+    parser.add_argument(
+        "-o", "--output", type=str, help="Directory to dump all the graphs into"
+    )
 
     args = parser.parse_args()
 
-    csv_file = args.csv_file
-    directory = args.dir
+    csv_file, directory = args.csv_file, args.output
 
     if not os.path.isdir(directory):
         os.makedirs(directory)
@@ -58,6 +62,14 @@ def main() -> None:
             fancybox=True,
             shadow=True,
             ncol=5,
+        )
+
+        ax.yaxis.set_major_formatter(
+            FuncFormatter(
+                lambda x, _: int_to_human(x)
+                if x < 1_000_000
+                else int_to_human(x, fmt="%.1f")
+            )
         )
 
         human_array_size = int_to_human(array_size, replace_long=False)

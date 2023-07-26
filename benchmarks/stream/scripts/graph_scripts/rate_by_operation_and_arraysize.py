@@ -15,37 +15,65 @@ def main() -> None:
         description="Create graphs from previously generated CSV files"
     )
 
-    parser.add_argument("csv_file", type=file_exists, help="CSV file to process")
-
-    parser.add_argument("dir", type=str, help="Directory to dump all the graphs into")
-
     parser.add_argument(
-        "--drop-array-sizes",
-        type=int,
-        nargs="+",
-        help="The array sizes to be excluded from the graphs",
+        "-c", "--csv-file", type=file_exists, required=True, help="CSV file to process"
     )
 
     parser.add_argument(
-        "--vendor-type", type=str, help="Any more information to add to the plot titles"
+        "-o",
+        "--output",
+        type=str,
+        required=True,
+        help="Directory to dump all the graphs into",
+    )
+
+    parser.add_argument(
+        "-a",
+        "--array-sizes",
+        type=int,
+        nargs="+",
+        required=False,
+        help="The array sizes to be graphed",
+    )
+
+    parser.add_argument(
+        "-f",
+        "--functions",
+        type=str,
+        nargs="+",
+        required=False,
+        help="The functions to be graphed",
+    )
+
+    parser.add_argument(
+        "-v",
+        "--vendor-type",
+        type=str,
+        required=False,
+        help="The vendor type to be displayed in the title",
+    )
+
+    parser.add_argument(
+        "-t",
+        "--title",
+        type=str,
+        required=False,
+        help="The main title of the graph",
     )
 
     args = parser.parse_args()
 
-    directory = args.dir
+    directory = args.output
 
     if not os.path.isdir(directory):
         os.makedirs(directory)
 
     df = pd.read_csv(args.csv_file).iloc[:, 0:4]
 
-    array_sizes: pd.Series = df["ArraySize"].drop_duplicates()
-
-    if args.drop_array_sizes:
-        for to_drop in args.drop_array_sizes:
-            array_sizes.drop(array_sizes[array_sizes == to_drop].index, inplace=True)
-
-    functions = df["Function"].drop_duplicates()
+    array_sizes, functions = (
+        args.array_sizes if args.array_sizes else df["ArraySize"].drop_duplicates(),
+        args.functions if args.functions else df["Function"].drop_duplicates(),
+    )
 
     for func in functions:
         filtered = df[df["Function"] == func]
@@ -80,10 +108,16 @@ def main() -> None:
         ax.set_xlabel("Threads")
         ax.set_ylabel("Best Rate (MB/s)")
 
-        if args.vendor_type:
-            ax.set_title(f"Vendor Type: {args.vendor_type}, Operation: {func}")
+        original_title = (
+            f"Vendor Type: {args.vendor_type}, Operation: {func}"
+            if args.vendor_type
+            else f"Operation: {func}"
+        )
+
+        if title := args.title:
+            ax.set_title(f"{title}\n{original_title}")
         else:
-            ax.set_title(f"Operation: {func}")
+            ax.set_title(original_title)
 
         f = directory + f"{func}.png"
         fig.savefig(f)

@@ -3,6 +3,7 @@ import re
 import subprocess
 import time
 
+
 ARRAY_SIZES: list[int] = [
     10_000_000,
     50_000_000,
@@ -44,8 +45,6 @@ def run_cmd(cmd: str) -> str:
     return returned_output
 
 
-# Example (while cd'd into this directory):
-# python3 stream_gen_csv.py ../stream_c.exe --numa-nodes 0
 def main() -> None:
     parser = argparse.ArgumentParser(description="STREAM benchmarking tool runner")
 
@@ -56,6 +55,7 @@ def main() -> None:
     )
 
     parser.add_argument(
+        "-n",
         "--numa-nodes",
         required=True,
         type=str,
@@ -63,41 +63,51 @@ def main() -> None:
     )
 
     parser.add_argument(
+        "-r",
         "--ntimes",
         type=int,
+        required=False,
         default=100,
         help="How many times each for loop should run for",
     )
 
     parser.add_argument(
+        "-o",
         "--output",
         type=str,
+        required=False,
+        default="dump.csv",
         help="Where the output file should be located",
     )
 
     parser.add_argument(
-        "--drop-array-sizes",
+        "-a",
+        "--array-sizes",
         type=int,
+        required=False,
         nargs="+",
-        help="The arrays that should not be ran",
+        default=ARRAY_SIZES,
+        help="The arrays that should be ran",
+    )
+
+    parser.add_argument(
+        "-t",
+        "--threads",
+        type=int,
+        required=False,
+        nargs="+",
+        default=THREADS,
+        help="The thread counts that the program should use",
     )
 
     args = parser.parse_args()
 
-    output_file: str
-    if args.output:
-        output_file = args.output
-    else:
-        output_file = "dump.csv"
-
     lst = []
 
-    array_sizes = [x for x in ARRAY_SIZES if x not in args.drop_array_sizes]
-
-    for threads in THREADS:
-        for array_size in array_sizes:
+    for thread_count in args.threads:
+        for array_size in args.array_sizes:
             cmd = (
-                f"export OMP_NUM_THREADS={threads} && "
+                f"export OMP_NUM_THREADS={thread_count} && "
                 f"numactl --cpunodebind=0 "
                 f"./{args.binary_path} --ntimes {args.ntimes} "
                 f"--numa-nodes {args.numa_nodes} --array-size {array_size}"
@@ -105,11 +115,13 @@ def main() -> None:
 
             start = time.time()
             cmd_stdout = run_cmd(cmd)
-            formatted = format_stream_output(cmd_stdout, threads, array_size)
+            formatted = format_stream_output(cmd_stdout, thread_count, array_size)
             lst.extend(formatted)
             end = time.time()
             elapsed = round(end - start, 3)
-            print(f"Done in {elapsed}s : {threads} threads, {array_size} array size")
+            print(
+                f"Done in {elapsed}s : {thread_count} threads, {array_size} array size"
+            )
 
     header = lst[0]
     filtered = list(filter(lambda x: x != header, lst))
@@ -117,7 +129,7 @@ def main() -> None:
 
     out = [(",".join(str(y) for y in x) + "\n") for x in filtered]
 
-    with open(output_file, mode="w") as f:
+    with open(args.output, mode="w") as f:
         f.writelines(out)
 
 

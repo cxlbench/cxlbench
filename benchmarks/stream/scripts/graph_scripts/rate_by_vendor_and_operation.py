@@ -1,11 +1,12 @@
 import argparse
 import os
+from pathlib import Path
 
 import matplotlib.pyplot as plt
-from matplotlib.ticker import FuncFormatter
 import pandas as pd
+from matplotlib.ticker import FuncFormatter
 
-from utils import file_exists, int_to_human, smooth_line
+from utils import int_to_human, smooth_line
 
 # Suppressing a warning that appears when more than 20 figures are opened
 plt.rcParams["figure.max_open_warning"] = 0
@@ -17,21 +18,25 @@ def main() -> None:
     )
 
     parser.add_argument(
+        "-c",
         "--csv-files",
-        type=file_exists,
-        nargs="+",
+        type=str,
+        action="append",
         required=True,
+        nargs=2,
         help="The first vendor type to process",
     )
 
     parser.add_argument(
-        "--output-dir",
+        "-o",
+        "--output",
         type=str,
         required=True,
         help="Directory to dump all the graphs into",
     )
 
     parser.add_argument(
+        "-a",
         "--array-sizes",
         type=int,
         nargs="+",
@@ -40,6 +45,7 @@ def main() -> None:
     )
 
     parser.add_argument(
+        "-f",
         "--functions",
         type=str,
         nargs="+",
@@ -48,17 +54,18 @@ def main() -> None:
     )
 
     parser.add_argument(
+        "-t",
         "--title",
-        required=False,
         type=str,
+        required=False,
         help="The title that the graphs should have",
     )
 
     args = parser.parse_args()
 
     csv_files, directory, array_sizes, functions, title = (
-        args.csv_files,
-        args.output_dir,
+        [(Path(x), y) for x, y in args.csv_files],
+        args.output,
         args.array_sizes,
         args.functions,
         args.title,
@@ -67,18 +74,18 @@ def main() -> None:
     if not os.path.isdir(directory):
         os.makedirs(directory)
 
-    dfs = [(f, pd.read_csv(f).iloc[:, 0:4]) for f in csv_files]
+    dfs = [(pd.read_csv(f).iloc[:, 0:4], n) for (f, n) in csv_files]
 
     if not array_sizes:
-        array_sizes = dfs[0][1]["ArraySize"].drop_duplicates()
+        array_sizes = dfs[0][0]["ArraySize"].drop_duplicates()
     if not functions:
-        functions = dfs[0][1]["Function"].drop_duplicates()
+        functions = dfs[0][0]["Function"].drop_duplicates()
 
     for array_size in array_sizes:
         for func in functions:
             fig, ax = plt.figure(), plt.subplot(111)
 
-            for abs_file_path, df in dfs:
+            for df, n in dfs:
                 # https://stackoverflow.com/a/27975230 (Filtering by row value)
                 filtered = df[df["ArraySize"] == array_size]
                 filtered = (
@@ -90,7 +97,7 @@ def main() -> None:
 
                 x, y = smooth_line(filtered.index, filtered.values)
 
-                ax.plot(x, y, label=str(abs_file_path.stem))
+                ax.plot(x, y, label=n)
 
             # https://stackoverflow.com/a/4701285 (setting legend outside plot)
             box = ax.get_position()
@@ -102,7 +109,8 @@ def main() -> None:
                 bbox_to_anchor=(0.5, -0.125),
                 fancybox=True,
                 shadow=True,
-                ncol=5,
+                ncol=len(csv_files),
+                fontsize=7.25,
             )
 
             ax.yaxis.set_major_formatter(
