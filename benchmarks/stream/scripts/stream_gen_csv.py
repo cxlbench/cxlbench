@@ -3,6 +3,7 @@ import re
 import subprocess
 import time
 
+
 ARRAY_SIZES: list[int] = [
     10_000_000,
     50_000_000,
@@ -44,8 +45,6 @@ def run_cmd(cmd: str) -> str:
     return returned_output
 
 
-# Example (while cd'd into this directory):
-# python3 stream_gen_csv.py ../stream_c.exe --numa-nodes 0
 def main() -> None:
     parser = argparse.ArgumentParser(description="STREAM benchmarking tool runner")
 
@@ -56,6 +55,7 @@ def main() -> None:
     )
 
     parser.add_argument(
+        "-n",
         "--numa-nodes",
         required=True,
         type=str,
@@ -63,6 +63,7 @@ def main() -> None:
     )
 
     parser.add_argument(
+        "-r",
         "--ntimes",
         type=int,
         required=False,
@@ -71,43 +72,40 @@ def main() -> None:
     )
 
     parser.add_argument(
+        "-o",
         "--output",
         type=str,
         required=False,
+        default="dump.csv",
         help="Where the output file should be located",
     )
 
     parser.add_argument(
+        "-a",
         "--array-sizes",
         type=int,
         required=False,
         nargs="+",
+        default=ARRAY_SIZES,
         help="The arrays that should be ran",
     )
 
     parser.add_argument(
+        "-t",
         "--threads",
         type=int,
         required=False,
         nargs="+",
+        default=THREADS,
         help="The thread counts that the program should use",
     )
 
     args = parser.parse_args()
 
-    output_file: str
-    if args.output:
-        output_file = args.output
-    else:
-        output_file = "dump.csv"
-
     lst = []
 
-    array_sizes = args.array_sizes if args.array_sizes else ARRAY_SIZES
-    threads = args.threads if args.threads else THREADS
-
-    for thread_count in threads:
-        for array_size in array_sizes:
+    for thread_count in args.threads:
+        for array_size in args.array_sizes:
             cmd = (
                 f"export OMP_NUM_THREADS={thread_count} && "
                 f"numactl --cpunodebind=0 "
@@ -131,7 +129,7 @@ def main() -> None:
 
     out = [(",".join(str(y) for y in x) + "\n") for x in filtered]
 
-    with open(output_file, mode="w") as f:
+    with open(args.output, mode="w") as f:
         f.writelines(out)
 
 

@@ -17,6 +17,7 @@ def main() -> None:
     )
 
     parser.add_argument(
+        "-c",
         "--csv-files",
         type=file_exists,
         nargs="+",
@@ -25,13 +26,15 @@ def main() -> None:
     )
 
     parser.add_argument(
-        "--output-dir",
+        "-o",
+        "--output",
         type=str,
         required=True,
         help="Directory to dump all the graphs into",
     )
 
     parser.add_argument(
+        "-a",
         "--array-sizes",
         type=int,
         nargs="+",
@@ -40,6 +43,7 @@ def main() -> None:
     )
 
     parser.add_argument(
+        "-f",
         "--functions",
         type=str,
         nargs="+",
@@ -48,9 +52,10 @@ def main() -> None:
     )
 
     parser.add_argument(
+        "-t",
         "--title",
-        required=False,
         type=str,
+        required=False,
         help="The title that the graphs should have",
     )
 
@@ -58,7 +63,7 @@ def main() -> None:
 
     csv_files, directory, array_sizes, functions, title = (
         args.csv_files,
-        args.output_dir,
+        args.output,
         args.array_sizes,
         args.functions,
         args.title,

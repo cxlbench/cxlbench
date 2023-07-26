@@ -13,14 +13,17 @@ def main() -> None:
         description="Create graphs from previously generated CSV files"
     )
 
-    parser.add_argument("csv_file", type=file_exists, help="CSV file to process")
+    parser.add_argument(
+        "-c", "--csv_file", type=file_exists, help="CSV file to process"
+    )
 
-    parser.add_argument("dir", type=str, help="Directory to dump all the graphs into")
+    parser.add_argument(
+        "-o", "--output", type=str, help="Directory to dump all the graphs into"
+    )
 
     args = parser.parse_args()
 
-    csv_file = args.csv_file
-    directory = args.dir
+    csv_file, directory = args.csv_file, args.output
 
     if not os.path.isdir(directory):
         os.makedirs(directory)
