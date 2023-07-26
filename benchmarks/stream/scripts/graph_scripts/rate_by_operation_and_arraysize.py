@@ -42,7 +42,15 @@ def main() -> None:
         type=str,
         nargs="+",
         required=False,
-        help="The functions to be graphed"
+        help="The functions to be graphed",
+    )
+
+    parser.add_argument(
+        "-v",
+        "--vendor-type",
+        type=str,
+        required=False,
+        help="The vendor type to be displayed in the title",
     )
 
     parser.add_argument(
@@ -100,10 +108,16 @@ def main() -> None:
         ax.set_xlabel("Threads")
         ax.set_ylabel("Best Rate (MB/s)")
 
+        original_title = (
+            f"Vendor Type: {args.vendor_type}, Operation: {func}"
+            if args.vendor_type
+            else f"Operation: {func}"
+        )
+
         if title := args.title:
-            ax.set_title(f"{title}, Operation: {func}")
+            ax.set_title(f"{title}\n{original_title}")
         else:
-            ax.set_title(f"Operation: {func}")
+            ax.set_title(original_title)
 
         f = directory + f"{func}.png"
         fig.savefig(f)

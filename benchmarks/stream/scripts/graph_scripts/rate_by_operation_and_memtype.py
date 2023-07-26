@@ -51,6 +51,7 @@ def main() -> None:
         "-a",
         "--array-sizes",
         type=int,
+        nargs="+",
         required=False,
         help="The array size to use",
     )
@@ -60,7 +61,16 @@ def main() -> None:
         "--functions",
         type=str,
         nargs="+",
+        required=False,
         help="The functions to be plotted",
+    )
+
+    parser.add_argument(
+        "-t",
+        "--title",
+        type=str,
+        required=False,
+        help="The main title of the graph",
     )
 
     args = parser.parse_args()
@@ -138,7 +148,13 @@ def main() -> None:
 
             ax.set_xlabel("Threads")
             ax.set_ylabel("Best Rate (MB/s)")
-            ax.set_title(f"Function: {func}, Array size: {human_array_size}")
+
+            if title := args.title:
+                ax.set_title(
+                    f"{title}\nFunction: {func}, Array size: {human_array_size}"
+                )
+            else:
+                ax.set_title(f"Function: {func}, Array size: {human_array_size}")
 
             f = directory + f"{func}-{human_array_size.replace(' ', '')}.png"
             fig.savefig(f)

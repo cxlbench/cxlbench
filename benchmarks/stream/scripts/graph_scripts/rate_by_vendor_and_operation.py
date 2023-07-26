@@ -110,8 +110,7 @@ def main() -> None:
                 fancybox=True,
                 shadow=True,
                 ncol=len(csv_files),
-                fontsize=10,
-                
+                fontsize=7.25,
             )
 
             ax.yaxis.set_major_formatter(
