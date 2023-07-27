@@ -11,16 +11,25 @@ def main() -> None:
         description="Get the best bandwidths from a CSV file"
     )
 
+    parser.add_argument("csv_file", type=file_exists, help="CSV file to process")
+
     parser.add_argument(
-        "csv_file", type=file_exists, required=True, help="CSV file to process"
+        "-a",
+        "--array-sizes",
+        type=int,
+        nargs="+",
+        required=False,
+        help="The array sizes to be shown",
     )
 
     args = parser.parse_args()
 
+    df = pd.read_csv(args.csv_file).iloc[:, 0:4]
+
+    df = df[df["ArraySize"].isin(args.array_sizes)]
+
     df = (
-        pd.read_csv(args.csv_file)
-        .iloc[:, 0:4]
-        .groupby(["ArraySize", "Threads", "Function"])["BestRateMBs"]
+        df.groupby(["ArraySize", "Threads", "Function"])["BestRateMBs"]
         .mean()
         .reset_index()
     )
