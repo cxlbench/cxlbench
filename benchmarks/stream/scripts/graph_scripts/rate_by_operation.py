@@ -21,6 +21,18 @@ def main() -> None:
         "-o", "--output", type=str, help="Directory to dump all the graphs into"
     )
 
+    parser.add_argument(
+        "-a",
+        "--array-sizes",
+        type=int,
+        nargs="+",
+        help="The array sizes to be filtered",
+    )
+
+    parser.add_argument(
+        "-f", "--functions", type=str, nargs="+", help="The functions to be filtered"
+    )
+
     args = parser.parse_args()
 
     csv_file, directory = args.csv_file, args.output
@@ -30,8 +42,10 @@ def main() -> None:
 
     df = pd.read_csv(csv_file).iloc[:, 0:4]
 
-    array_sizes = df["ArraySize"].drop_duplicates()
-    functions = df["Function"].drop_duplicates()
+    array_sizes = (
+        args.array_sizes if args.array_sizes else df["ArraySize"].drop_duplicates()
+    )
+    functions = args.functions if args.functions else df["Function"].drop_duplicates()
 
     for array_size in array_sizes:
         filtered = df[df["ArraySize"] == array_size]
