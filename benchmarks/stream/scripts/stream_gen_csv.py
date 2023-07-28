@@ -1,12 +1,14 @@
 import argparse
+from datetime import datetime
+import platform
 import re
 import subprocess
 import time
 
+import psutil
+
 
 ARRAY_SIZES: list[int] = [
-    10_000_000,
-    50_000_000,
     100_000_000,
     200_000_000,
     300_000_000,
@@ -14,10 +16,25 @@ ARRAY_SIZES: list[int] = [
     430_080_000,
 ]
 
-# 1, 2, 4, 6, 8, ..., 32
-THREADS: list[int] = [1, *[x * 2 for x in range(1, 17)]]
 
 WHITESPACE_REPLACE = re.compile(r"\s+")
+
+
+# {uname}_stream_{yyyymmdd}.csv
+def dump_file_name() -> str:
+    platform_name = platform.system()
+    now = datetime.now().strftime(r"%Y%m%d")
+
+    return f"{platform_name}_stream_{now}.csv"
+
+
+def core_count_per_socket() -> int:
+    command = ["lscpu", "-p=SOCKET"]
+    output = subprocess.check_output(command).decode("utf-8")
+    socket_count = len(set(x for x in output.split("\n")[4:] if len(x)))
+    total_core_count = psutil.cpu_count(logical=False)
+
+    return int(total_core_count / socket_count)
 
 
 def format_stream_output(
@@ -49,8 +66,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="STREAM benchmarking tool runner")
 
     parser.add_argument(
-        "binary_path",
+        "-b",
+        "--binary-path",
         type=str,
+        required=True,
         help="Where the stream binary/executable is located",
     )
 
@@ -76,7 +95,7 @@ def main() -> None:
         "--output",
         type=str,
         required=False,
-        default="dump.csv",
+        default=dump_file_name(),
         help="Where the output file should be located",
     )
 
@@ -96,7 +115,7 @@ def main() -> None:
         type=int,
         required=False,
         nargs="+",
-        default=THREADS,
+        default=core_count_per_socket(),
         help="The thread counts that the program should use",
     )
 
