@@ -1,9 +1,11 @@
+#!/usr/bin/env python3
+
 import argparse
 
 import humanize
 import pandas as pd
 
-from utils import file_exists
+from graph_scripts.utils import file_exists
 
 
 def main() -> None:

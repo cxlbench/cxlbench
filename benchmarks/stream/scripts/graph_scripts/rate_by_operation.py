@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import argparse
 import os
 
@@ -42,10 +44,10 @@ def main() -> None:
 
     df = pd.read_csv(csv_file).iloc[:, 0:4]
 
-    array_sizes = (
-        args.array_sizes if args.array_sizes else df["ArraySize"].drop_duplicates()
+    array_sizes, functions = (
+        args.array_sizes if args.array_sizes else df["ArraySize"].drop_duplicates(),
+        args.functions if args.functions else df["Function"].drop_duplicates(),
     )
-    functions = args.functions if args.functions else df["Function"].drop_duplicates()
 
     for array_size in array_sizes:
         filtered = df[df["ArraySize"] == array_size]
