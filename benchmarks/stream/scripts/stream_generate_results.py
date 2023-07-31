@@ -114,12 +114,23 @@ def main() -> None:
         help="The thread counts that the program should use",
     )
 
+    parser.add_argument(
+        "-p",
+        "--prefix",
+        type=str,
+        required=False,
+        help="The prefix for the output files",
+    )
+
     args = parser.parse_args()
 
     output_file = dump_file_name(args.numa_nodes.replace(",", ""))
     directory = args.output_dir
 
-    relative_path = f"{directory}/{output_file}"
+    if p := args.prefix:
+        relative_path = f"{directory}/{p}_{args.numa_nodes.replace(',', '')}.csv"
+    else:
+        relative_path = f"{directory}/{output_file}"
 
     if not os.path.isdir(directory):
         os.makedirs(directory)

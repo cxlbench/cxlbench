@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 if [ -z "$1" ]; then
-    echo "Usage: ./run-all.sh <output-directory>"
+    echo "Usage: ./run-all.sh <output-directory> <file-prefix>"
     exit 1
 fi
 
@@ -32,7 +32,7 @@ else
 fi
 
 # Installing all the Python dependencies
-pip_packages=("humanize" "pandas" "matplotlib")
+pip_packages=("psutil" "humanize" "pandas" "matplotlib" "scipy")
 for package in "${pip_packages[@]}"
 do
     if ! pip show "$package" > /dev/null 2>&1; then
@@ -50,5 +50,5 @@ cd scripts
 
 for nn in "${numa_nodes[@]}"
 do
-    ./stream_generate_results.py -o $1 -b ../stream_c.exe -n $nn
+    ./stream_generate_results.py -o $1 -p $2 -b ../stream_c.exe -n $nn
 done
