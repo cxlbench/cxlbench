@@ -45,5 +45,6 @@ cd scripts
 
 for nn in "${numa_nodes[@]}"
 do
-    ./stream_generate_results.py -o stream_output_$nn -b ../stream_c.exe -n $nn
+    output_dir=$(echo "$nn" | tr -d ',')
+    ./stream_generate_results.py -o $output_dir -b ../stream_c.exe -n $nn
 done
