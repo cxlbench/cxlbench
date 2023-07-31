@@ -31,7 +31,7 @@ def main() -> None:
 
     parser.add_argument(
         "-o",
-        "--output",
+        "--output-dir",
         type=str,
         required=True,
         help="Directory to dump all the graphs into",
@@ -67,7 +67,7 @@ def main() -> None:
 
     csv_files, directory, array_sizes, functions, title = (
         [(Path(x), y) for x, y in args.csv_files],
-        args.output,
+        args.output_dir + "/",
         args.array_sizes,
         args.functions,
         args.title,

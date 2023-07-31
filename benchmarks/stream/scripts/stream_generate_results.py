@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 
 import argparse
-import platform
+import os
 import re
 import subprocess
 import time
-from datetime import datetime
 
 import psutil
+
+from graph_scripts.utils import dump_file_name
 
 ARRAY_SIZES: list[int] = [
     100_000_000,
@@ -19,14 +20,6 @@ ARRAY_SIZES: list[int] = [
 
 
 WHITESPACE_REPLACE = re.compile(r"\s+")
-
-
-# {uname}_stream_{NUMA}_{yyyymmdd}.csv
-def dump_file_name(numa_nodes: str) -> str:
-    platform_name = platform.system()
-    now = datetime.now().strftime(r"%Y%m%d")
-
-    return f"{platform_name}_stream_{numa_nodes}_{now}.csv"
 
 
 def core_count_per_socket() -> list[int]:
@@ -77,6 +70,14 @@ def main() -> None:
     )
 
     parser.add_argument(
+        "-o",
+        "--output-dir",
+        type=str,
+        required=True,
+        help="Where the output directory should be located",
+    )
+
+    parser.add_argument(
         "-n",
         "--numa-nodes",
         required=True,
@@ -91,14 +92,6 @@ def main() -> None:
         required=False,
         default=100,
         help="How many times each for loop should run for",
-    )
-
-    parser.add_argument(
-        "-o",
-        "--output",
-        type=str,
-        required=False,
-        help="Where the output file should be located",
     )
 
     parser.add_argument(
@@ -123,19 +116,25 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    output = (
-        args.output if args.output else dump_file_name(args.numa_nodes.replace(",", ""))
-    )
+    output_file = dump_file_name(args.numa_nodes.replace(",", ""))
+    directory = args.output_dir
 
-    lst = []
+    if not os.path.isdir(directory):
+        os.makedirs(directory)
 
     print(f"Binary file: {args.binary_path}")
     print(f"NUMA nodes: {args.numa_nodes}")
     print(f"Repetitions (ntimes): {args.ntimes}")
-    print(f"Output file: {output}")
+    print(f"Output directory: {args.output_dir}")
+    print(f"Output file: {output_file}")
     print(f"Array sizes: {', '.join(str(x) for x in args.array_sizes)}")
     print(f"Threads: {', '.join(str(x) for x in args.threads)}")
     print()
+
+    lst = []
+
+    final_calculations = args.threads * args.array_sizes
+    index = 1
 
     for thread_count in args.threads:
         for array_size in args.array_sizes:
@@ -157,9 +156,15 @@ def main() -> None:
             lst.extend(formatted)
             end = time.time()
             elapsed = round(end - start, 3)
+
             print(
-                f"Done in {elapsed}s : {thread_count} threads, {array_size} array size"
+                (
+                    f"Done in {elapsed}s ({index}/{final_calculations}) : "
+                    f"{thread_count} threads, {array_size} array size"
+                )
             )
+
+            index += 1
 
     header = lst[0]
     filtered = list(filter(lambda x: x != header, lst))
@@ -167,7 +172,7 @@ def main() -> None:
 
     out = [(",".join(str(y) for y in x) + "\n") for x in filtered]
 
-    with open(output, mode="w") as f:
+    with open(f"{directory}/{output_file}", mode="w") as f:
         f.writelines(out)
 
 

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+# Installing packages on Debian-based and Fedora systems
+# if said packages do not exist
 if command -v yum &> /dev/null; then
     if ! yum list installed numactl-devel; then
         echo "Detected Fedora. Installing numa.h with yum."
@@ -24,7 +26,9 @@ else
     exit 1
 fi
 
-make stream_c.exe
+if ! [ -f stream_c.exe ]; then
+    make stream_c.exe
+fi
 
 numa_nodes=("0" "1" "2" "0,2" "1,2")
 
@@ -32,5 +36,5 @@ cd scripts
 
 for nn in "${numa_nodes[@]}"
 do
-    python3 stream_generate_results.py -b ../stream_c.exe -n $nn
+    ./stream_generate_results.py -o stream_output_$nn -b ../stream_c.exe -n $nn
 done
