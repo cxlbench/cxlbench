@@ -1,9 +1,9 @@
 #!/bin/bash
 
-if command -v yum &> /dev/null; then
+if command -v yum &> /dev/null && yum list installed numactl-devel; then
     echo "Detected Fedora. Installing numa.h with yum."
     sudo yum install -y numactl-devel
-elif command -v apt-get &> /dev/null; then
+elif command -v dpkg &> /dev/null && dpkg -l | grep "libnuma-dev"; then
     echo "Detected Debian-based system. Installing numa.h with apt."
     sudo apt-get update
     sudo apt-get install -y libnuma-dev

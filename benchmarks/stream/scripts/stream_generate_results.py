@@ -27,7 +27,7 @@ def dump_file_name(numa_nodes: str) -> str:
     return f"{platform_name}_stream_{numa_nodes}_{now}.csv"
 
 
-def core_count_per_socket() -> int:
+def core_count_per_socket() -> list[int]:
     command = ["lscpu", "-p=SOCKET"]
     output = subprocess.check_output(command).decode("utf-8")
     socket_count = len(set(x for x in output.split("\n")[4:] if len(x)))
