@@ -54,6 +54,15 @@ do
     numa=$(echo "$nn" | tr -d ',')
     stem="$2_$numa"
 
-    mkdir -p $1/best_of/
-    ./best_of.py $1/data/$stem.csv > $1/best_of/$stem.txt
+    mkdir -p $1/$stem/best_of/
+    ./best_of.py $1/data/$stem.csv > $1/$stem/best_of/$stem.txt
+
+    ./graph_scripts/rate_by_operation.py \
+        -c $1/data/$stem.csv \
+        -o $1/$stem/rate_by_operation/
+
+    ./graph_scripts/rate_by_operation_and_arraysize.py \
+        -c $1/data/$stem.csv \
+        -o $1/$stem/rate_by_operation_and_arraysize/
+
 done
