@@ -33,7 +33,9 @@ def core_count_per_socket() -> list[int]:
     socket_count = len(set(x for x in output.split("\n")[4:] if len(x)))
     total_core_count = psutil.cpu_count(logical=False)
 
-    return int(total_core_count / socket_count)
+    cores = int(total_core_count / socket_count)
+
+    return [1, *[x * 2 for x in range(1, (cores // 2) + 1)]]
 
 
 def format_stream_output(
