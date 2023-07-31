@@ -1,12 +1,11 @@
 import argparse
-from datetime import datetime
 import platform
 import re
 import subprocess
 import time
+from datetime import datetime
 
 import psutil
-
 
 ARRAY_SIZES: list[int] = [
     100_000_000,
@@ -20,12 +19,12 @@ ARRAY_SIZES: list[int] = [
 WHITESPACE_REPLACE = re.compile(r"\s+")
 
 
-# {uname}_stream_{yyyymmdd}.csv
-def dump_file_name() -> str:
+# {uname}_stream_{NUMA}_{yyyymmdd}.csv
+def dump_file_name(numa_nodes: str) -> str:
     platform_name = platform.system()
     now = datetime.now().strftime(r"%Y%m%d")
 
-    return f"{platform_name}_stream_{now}.csv"
+    return f"{platform_name}_stream_{numa_nodes}_{now}.csv"
 
 
 def core_count_per_socket() -> int:
@@ -95,7 +94,6 @@ def main() -> None:
         "--output",
         type=str,
         required=False,
-        default=dump_file_name(),
         help="Where the output file should be located",
     )
 
@@ -120,6 +118,10 @@ def main() -> None:
     )
 
     args = parser.parse_args()
+
+    output = (
+        args.output if args.output else dump_file_name(args.numa_nodes.replace(",", ""))
+    )
 
     lst = []
 
@@ -148,7 +150,7 @@ def main() -> None:
 
     out = [(",".join(str(y) for y in x) + "\n") for x in filtered]
 
-    with open(args.output, mode="w") as f:
+    with open(output, mode="w") as f:
         f.writelines(out)
 
 
