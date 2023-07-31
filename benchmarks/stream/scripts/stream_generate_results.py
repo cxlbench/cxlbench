@@ -119,6 +119,8 @@ def main() -> None:
     output_file = dump_file_name(args.numa_nodes.replace(",", ""))
     directory = args.output_dir
 
+    relative_path = f"{directory}/{output_file}"
+
     if not os.path.isdir(directory):
         os.makedirs(directory)
 
@@ -172,8 +174,10 @@ def main() -> None:
 
     out = [(",".join(str(y) for y in x) + "\n") for x in filtered]
 
-    with open(f"{directory}/{output_file}", mode="w") as f:
+    with open(relative_path, mode="w") as f:
         f.writelines(out)
+
+    print(f"CSV outputted at {relative_path}\n\n")
 
 
 if __name__ == "__main__":

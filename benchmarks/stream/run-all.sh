@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+if [ -z "$1" ]; then
+    echo "Usage: ./run-all.sh <output-directory>"
+    exit 1
+fi
+
 # Installing packages on Debian-based and Fedora systems
 # if said packages do not exist
 if command -v yum &> /dev/null; then
@@ -45,6 +50,5 @@ cd scripts
 
 for nn in "${numa_nodes[@]}"
 do
-    output_dir=$(echo "$nn" | tr -d ',')
-    ./stream_generate_results.py -o $output_dir -b ../stream_c.exe -n $nn
+    ./stream_generate_results.py -o $1 -b ../stream_c.exe -n $nn
 done
