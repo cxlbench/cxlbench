@@ -133,7 +133,7 @@ def main() -> None:
 
     lst = []
 
-    final_calculations = args.threads * args.array_sizes
+    final_calculations = len(args.threads) * len(args.array_sizes)
     index = 1
 
     for thread_count in args.threads:

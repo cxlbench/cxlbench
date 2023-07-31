@@ -26,6 +26,15 @@ else
     exit 1
 fi
 
+# Installing all the Python dependencies
+pip_packages=("humanize" "pandas" "matplotlib")
+for package in "${pip_packages[@]}"
+do
+    if ! pip show "$package" > /dev/null 2>&1; then
+        pip install $package
+    fi
+done
+
 if ! [ -f stream_c.exe ]; then
     make stream_c.exe
 fi
