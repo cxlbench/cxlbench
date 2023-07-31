@@ -7,6 +7,14 @@ import pandas as pd
 
 from graph_scripts.utils import file_exists
 
+ARRAY_SIZES: list[int] = [
+    100_000_000,
+    200_000_000,
+    300_000_000,
+    400_000_000,
+    430_080_000,
+]
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -27,8 +35,9 @@ def main() -> None:
     args = parser.parse_args()
 
     df = pd.read_csv(args.csv_file).iloc[:, 0:4]
+    array_sizes = args.array_sizes if args.array_sizes else ARRAY_SIZES
 
-    df = df[df["ArraySize"].isin(args.array_sizes)]
+    df = df[df["ArraySize"].isin(array_sizes)]
 
     df = (
         df.groupby(["ArraySize", "Threads", "Function"])["BestRateMBs"]

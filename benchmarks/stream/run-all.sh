@@ -50,5 +50,10 @@ cd scripts
 
 for nn in "${numa_nodes[@]}"
 do
-    ./stream_generate_results.py -o $1 -p $2 -b ../stream_c.exe -n $nn
+    ./stream_generate_results.py -o $1/data -p $2 -b ../stream_c.exe -n $nn
+    numa=$(echo "$nn" | tr -d ',')
+    stem="$2_$numa"
+
+    mkdir -p $1/best_of/
+    ./best_of.py $1/data/$stem.csv > $1/best_of/$stem.txt
 done
