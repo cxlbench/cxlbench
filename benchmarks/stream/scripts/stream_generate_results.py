@@ -138,6 +138,8 @@ def main() -> None:
     final_calculations = len(args.threads) * len(args.array_sizes)
     index = 1
 
+    very_start = time.time()
+
     for thread_count in args.threads:
         for array_size in args.array_sizes:
             print(
@@ -177,7 +179,9 @@ def main() -> None:
     with open(relative_path, mode="w") as f:
         f.writelines(out)
 
-    print(f"CSV outputted at {relative_path}\n\n")
+    print(
+        f"{round(time.time() - very_start, 3)}s: CSV outputted to {relative_path}\n\n"
+    )
 
 
 if __name__ == "__main__":
