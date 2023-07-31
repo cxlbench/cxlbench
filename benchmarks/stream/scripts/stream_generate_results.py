@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import argparse
 import platform
 import re
@@ -127,8 +129,21 @@ def main() -> None:
 
     lst = []
 
+    print(f"Binary file: {args.binary_path}")
+    print(f"NUMA nodes: {args.numa_nodes}")
+    print(f"Repetitions (ntimes): {args.ntimes}")
+    print(f"Output file: {output}")
+    print(f"Array sizes: {', '.join(str(x) for x in args.array_sizes)}")
+    print(f"Threads: {', '.join(str(x) for x in args.threads)}")
+    print()
+
     for thread_count in args.threads:
         for array_size in args.array_sizes:
+            print(
+                f"Started {thread_count} threads, {array_size} array size",
+                end="\r",
+            )
+
             cmd = (
                 f"export OMP_NUM_THREADS={thread_count} && "
                 f"numactl --cpunodebind=0 "
