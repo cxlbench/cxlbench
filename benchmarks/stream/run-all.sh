@@ -12,6 +12,11 @@ else
     exit 1
 fi
 
+if command -v pip &> /dev/null; then
+    echo "Installing pip, due to it not being found."
+    sudo yum install -y python3-pip
+fi
+
 make stream_c.exe
 
 numa_nodes=("0" "1" "2" "0,2" "1,2")
