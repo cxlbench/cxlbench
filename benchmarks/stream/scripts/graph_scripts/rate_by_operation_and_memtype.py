@@ -158,7 +158,7 @@ def main() -> None:
             else:
                 ax.set_title(f"Function: {func}, Array size: {human_array_size}")
 
-            f = directory + f"{func}-{human_array_size.replace(' ', '')}.png"
+            f = directory + f"/{func}-{human_array_size.replace(' ', '')}.png"
             fig.savefig(f)
             fig.clf()
 

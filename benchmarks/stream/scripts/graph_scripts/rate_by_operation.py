@@ -104,7 +104,7 @@ def main() -> None:
         ax.set_ylabel("Best Rate (MB/s)")
         ax.set_title(f"Array size: {human_array_size}")
 
-        f = directory + f"{human_array_size.replace(' ', '')}.png"
+        f = directory + f"/{human_array_size.replace(' ', '')}.png"
         fig.savefig(f)
         fig.clf()
 

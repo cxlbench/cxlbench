@@ -67,7 +67,7 @@ def main() -> None:
 
     csv_files, directory, array_sizes, functions, title = (
         [(Path(x), y) for x, y in args.csv_files],
-        args.output_dir + "/",
+        args.output_dir,
         args.array_sizes,
         args.functions,
         args.title,
@@ -135,7 +135,7 @@ def main() -> None:
             else:
                 ax.set_title(default_title)
 
-            f = directory + f"{func}-{human_array_size.replace(' ', '')}.png"
+            f = directory + f"/{func}-{human_array_size.replace(' ', '')}.png"
             fig.savefig(f)
             fig.clf()
 
