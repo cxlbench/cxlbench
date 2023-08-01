@@ -20,7 +20,7 @@ def dump_file_name(numa_nodes: str | None = None) -> str:
     now = datetime.now().strftime(r"%Y%m%d")
 
     return (
-        f"{platform_name}_stream_{numa_nodes}_{numa_nodes}_{now}.csv"
+        f"{platform_name}_stream_{numa_nodes}_{now}.csv"
         if numa_nodes
-        else f"{platform_name}_stream_{numa_nodes}_{now}.csv"
+        else f"{platform_name}_stream_{now}.csv"
     )
