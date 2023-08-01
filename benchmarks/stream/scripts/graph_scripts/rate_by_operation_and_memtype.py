@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import argparse
 import os
 
@@ -41,7 +43,7 @@ def main() -> None:
 
     parser.add_argument(
         "-o",
-        "--output",
+        "--output-dir",
         type=str,
         default="dump.csv",
         help="Directory to dump all the graphs into",
@@ -75,7 +77,7 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    directory = args.output
+    directory = args.output_dir
 
     if not os.path.isdir(directory):
         os.makedirs(directory)

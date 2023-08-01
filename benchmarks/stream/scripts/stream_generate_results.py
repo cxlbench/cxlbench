@@ -1,12 +1,16 @@
+#!/usr/bin/env python3
+
 import argparse
+import os
 import re
 import subprocess
 import time
 
+import psutil
+
+from graph_scripts.utils import dump_file_name
 
 ARRAY_SIZES: list[int] = [
-    10_000_000,
-    50_000_000,
     100_000_000,
     200_000_000,
     300_000_000,
@@ -14,10 +18,19 @@ ARRAY_SIZES: list[int] = [
     430_080_000,
 ]
 
-# 1, 2, 4, 6, 8, ..., 32
-THREADS: list[int] = [1, *[x * 2 for x in range(1, 17)]]
 
 WHITESPACE_REPLACE = re.compile(r"\s+")
+
+
+def core_count_per_socket() -> list[int]:
+    command = ["lscpu", "-p=SOCKET"]
+    output = subprocess.check_output(command).decode("utf-8")
+    socket_count = len(set(x for x in output.split("\n")[4:] if len(x)))
+    total_core_count = psutil.cpu_count(logical=False)
+
+    cores = int(total_core_count / socket_count)
+
+    return [1, *[x * 2 for x in range(1, (cores // 2) + 1)]]
 
 
 def format_stream_output(
@@ -49,9 +62,19 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="STREAM benchmarking tool runner")
 
     parser.add_argument(
-        "binary_path",
+        "-b",
+        "--binary-path",
         type=str,
+        required=True,
         help="Where the stream binary/executable is located",
+    )
+
+    parser.add_argument(
+        "-o",
+        "--output-dir",
+        type=str,
+        required=True,
+        help="Where the output directory should be located",
     )
 
     parser.add_argument(
@@ -72,15 +95,6 @@ def main() -> None:
     )
 
     parser.add_argument(
-        "-o",
-        "--output",
-        type=str,
-        required=False,
-        default="dump.csv",
-        help="Where the output file should be located",
-    )
-
-    parser.add_argument(
         "-a",
         "--array-sizes",
         type=int,
@@ -96,16 +110,54 @@ def main() -> None:
         type=int,
         required=False,
         nargs="+",
-        default=THREADS,
+        default=core_count_per_socket(),
         help="The thread counts that the program should use",
+    )
+
+    parser.add_argument(
+        "-p",
+        "--prefix",
+        type=str,
+        required=False,
+        help="The prefix for the output files",
     )
 
     args = parser.parse_args()
 
+    output_file = dump_file_name(args.numa_nodes.replace(",", ""))
+    directory = args.output_dir
+
+    if p := args.prefix:
+        relative_path = f"{directory}/{p}_{args.numa_nodes.replace(',', '')}.csv"
+    else:
+        relative_path = f"{directory}/{output_file}"
+
+    if not os.path.isdir(directory):
+        os.makedirs(directory)
+
+    print(f"Binary file: {args.binary_path}")
+    print(f"NUMA nodes: {args.numa_nodes}")
+    print(f"Repetitions (ntimes): {args.ntimes}")
+    print(f"Output directory: {args.output_dir}")
+    print(f"Output file: {output_file}")
+    print(f"Array sizes: {', '.join(str(x) for x in args.array_sizes)}")
+    print(f"Threads: {', '.join(str(x) for x in args.threads)}")
+    print()
+
     lst = []
+
+    final_calculations = len(args.threads) * len(args.array_sizes)
+    index = 1
+
+    very_start = time.time()
 
     for thread_count in args.threads:
         for array_size in args.array_sizes:
+            print(
+                f"Started {thread_count} threads, {array_size} array size",
+                end="\r",
+            )
+
             cmd = (
                 f"export OMP_NUM_THREADS={thread_count} && "
                 f"numactl --cpunodebind=0 "
@@ -119,9 +171,15 @@ def main() -> None:
             lst.extend(formatted)
             end = time.time()
             elapsed = round(end - start, 3)
+
             print(
-                f"Done in {elapsed}s : {thread_count} threads, {array_size} array size"
+                (
+                    f"Done in {elapsed}s ({index}/{final_calculations}) : "
+                    f"{thread_count} threads, {array_size} array size"
+                )
             )
+
+            index += 1
 
     header = lst[0]
     filtered = list(filter(lambda x: x != header, lst))
@@ -129,8 +187,12 @@ def main() -> None:
 
     out = [(",".join(str(y) for y in x) + "\n") for x in filtered]
 
-    with open(args.output, mode="w") as f:
+    with open(relative_path, mode="w") as f:
         f.writelines(out)
+
+    print(
+        f"{round(time.time() - very_start, 3)}s: CSV outputted to {relative_path}\n\n"
+    )
 
 
 if __name__ == "__main__":

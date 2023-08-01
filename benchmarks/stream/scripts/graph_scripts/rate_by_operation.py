@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import argparse
 import os
 
@@ -14,11 +16,15 @@ def main() -> None:
     )
 
     parser.add_argument(
-        "-c", "--csv_file", type=file_exists, help="CSV file to process"
+        "-c", "--csv-file", type=file_exists, required=True, help="CSV file to process"
     )
 
     parser.add_argument(
-        "-o", "--output", type=str, help="Directory to dump all the graphs into"
+        "-o",
+        "--output-dir",
+        type=str,
+        required=True,
+        help="Directory to dump all the graphs into",
     )
 
     parser.add_argument(
@@ -26,26 +32,32 @@ def main() -> None:
         "--array-sizes",
         type=int,
         nargs="+",
+        required=False,
         help="The array sizes to be filtered",
     )
 
     parser.add_argument(
-        "-f", "--functions", type=str, nargs="+", help="The functions to be filtered"
+        "-f",
+        "--functions",
+        type=str,
+        nargs="+",
+        required=False,
+        help="The functions to be filtered",
     )
 
     args = parser.parse_args()
 
-    csv_file, directory = args.csv_file, args.output
+    csv_file, directory = args.csv_file, args.output_dir
 
     if not os.path.isdir(directory):
         os.makedirs(directory)
 
     df = pd.read_csv(csv_file).iloc[:, 0:4]
 
-    array_sizes = (
-        args.array_sizes if args.array_sizes else df["ArraySize"].drop_duplicates()
+    array_sizes, functions = (
+        args.array_sizes if args.array_sizes else df["ArraySize"].drop_duplicates(),
+        args.functions if args.functions else df["Function"].drop_duplicates(),
     )
-    functions = args.functions if args.functions else df["Function"].drop_duplicates()
 
     for array_size in array_sizes:
         filtered = df[df["ArraySize"] == array_size]
