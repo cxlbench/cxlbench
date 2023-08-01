@@ -121,7 +121,7 @@ def main() -> None:
         else:
             ax.set_title(original_title)
 
-        f = directory + f"{func}.png"
+        f = directory + f"/{func}.png"
         fig.savefig(f)
         fig.clf()
 
