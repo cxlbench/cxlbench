@@ -32,7 +32,7 @@ else
 fi
 
 # Installing all the Python dependencies
-pip_packages=("psutil" "humanize" "pandas" "matplotlib" "scipy")
+pip_packages=("psutil" "humanize" "pandas" "matplotlib" "scipy" "numpy")
 for package in "${pip_packages[@]}"
 do
     if ! pip show "$package" > /dev/null 2>&1; then
