@@ -48,8 +48,6 @@ numa_nodes=("0" "1" "2" "0,2" "1,2")
 
 cd scripts
 
-chmod u+x *.py graph_scripts/*.py
-
 for nn in "${numa_nodes[@]}"
 do
     ./stream_generate_results.py -o $1/data -p $2 -b ../stream_c.exe -n $nn
