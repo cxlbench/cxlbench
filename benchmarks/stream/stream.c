@@ -524,7 +524,7 @@ uint64_t *parse_cli_args(int argc, char **argv, uint64_t *numa_nodes) {
     while (1) {
         int option_index = 0;
 
-        c = getopt_long_only(argc, argv, "", long_options, &option_index);
+        c = getopt_long(argc, argv, "t:a:o:n:s:h", long_options, &option_index);
 
         if (c == -1) {
             break;
