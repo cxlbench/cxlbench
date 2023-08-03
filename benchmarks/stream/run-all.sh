@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-if [ -z "$1" ]; then
+if [ -z "$1" ] || [ -e "$2" ]; then
     echo "Usage: ./run-all.sh <output-directory> <file-prefix>"
     exit 1
 fi
@@ -32,13 +32,7 @@ else
 fi
 
 # Installing all the Python dependencies
-pip_packages=("psutil" "humanize" "pandas" "matplotlib" "scipy" "numpy")
-for package in "${pip_packages[@]}"
-do
-    if ! pip show "$package" > /dev/null 2>&1; then
-        pip install $package
-    fi
-done
+pip3 install -r requirements.txt
 
 if ! [ -f stream_c.exe ]; then
     make stream_c.exe
@@ -55,7 +49,7 @@ do
     stem="$2_$numa"
 
     mkdir -p $1/$stem/best_of/
-    ./best_of.py $1/data/$stem.csv > $1/$stem/best_of/$stem.txt
+    ./best_of.py -c $1/data/$stem.csv > $1/$stem/best_of/$stem.txt
 
     ./graph_scripts/rate_by_operation.py \
         -c $1/data/$stem.csv \

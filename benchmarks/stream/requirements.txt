@@ -1,0 +1,6 @@
+psutil
+humanize
+pandas
+matplotlib
+scipy
+numpy

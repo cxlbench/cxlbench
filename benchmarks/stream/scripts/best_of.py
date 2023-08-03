@@ -21,7 +21,9 @@ def main() -> None:
         description="Get the best bandwidths from a CSV file"
     )
 
-    parser.add_argument("csv_file", type=file_exists, help="CSV file to process")
+    parser.add_argument(
+        "-c", "--csv-file", type=file_exists, required=True, help="CSV file to process"
+    )
 
     parser.add_argument(
         "-a",
