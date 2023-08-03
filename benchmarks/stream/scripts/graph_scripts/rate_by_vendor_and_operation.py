@@ -111,7 +111,7 @@ def main() -> None:
                 bbox_to_anchor=(0.5, -0.125),
                 fancybox=True,
                 shadow=True,
-                ncol=len(csv_files),
+                ncol=2,
                 fontsize=7.25,
             )
 
