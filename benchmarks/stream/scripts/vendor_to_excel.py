@@ -1,17 +1,10 @@
 #!/usr/bin/env python3
 
 import argparse
-import os
-from openpyxl import load_workbook
-from openpyxl.worksheet.filters import (
-    FilterColumn,
-    CustomFilter,
-    CustomFilters,
-    DateGroupItem,
-    Filters,
-)
 
 import pandas as pd
+from openpyxl import load_workbook
+from openpyxl.worksheet.filters import FilterColumn, Filters
 
 from graph_scripts.utils import file_exists
 
