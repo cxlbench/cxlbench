@@ -45,7 +45,7 @@ def main() -> None:
         "-o",
         "--output-dir",
         type=str,
-        default="dump.csv",
+        required=True,
         help="Directory to dump all the graphs into",
     )
 
