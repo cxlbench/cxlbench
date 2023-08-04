@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 
 import argparse
+from io import StringIO
 import os
 import re
 import subprocess
 import time
 
 import psutil
+import pandas as pd
 
 from graph_scripts.utils import dump_file_name
 
@@ -128,7 +130,7 @@ def main() -> None:
     directory = args.output_dir
 
     if p := args.prefix:
-        relative_path = f"{directory}/{p}_{args.numa_nodes.replace(',', '')}.csv"
+        relative_path = f"{directory}/{p}_{args.numa_nodes.replace(',', '')}.xlsx"
     else:
         relative_path = f"{directory}/{output_file}"
 
@@ -185,13 +187,14 @@ def main() -> None:
     filtered = list(filter(lambda x: x != header, lst))
     filtered.insert(0, header)
 
-    out = [(",".join(str(y) for y in x) + "\n") for x in filtered]
+    out = "\n".join(",".join(str(y) for y in x) for x in filtered)
 
-    with open(relative_path, mode="w") as f:
-        f.writelines(out)
+    df = pd.read_csv(StringIO(out))
+
+    df.to_excel(relative_path, index=False)
 
     print(
-        f"{round(time.time() - very_start, 3)}s: CSV outputted to {relative_path}\n\n"
+        f"{round(time.time() - very_start, 3)}s: Excel outputted to {relative_path}\n\n"
     )
 
 
