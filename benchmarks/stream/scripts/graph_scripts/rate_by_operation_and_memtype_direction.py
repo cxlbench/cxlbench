@@ -62,7 +62,7 @@ def main() -> None:
     for array_size in array_sizes:
         filtered = df[df["ArraySize"] == array_size]
 
-        fig = plt.figure(figsize=(9, 9))
+        fig = plt.figure(figsize=(10, 10))
         ax = plt.subplot(111)
 
         for i, memory in enumerate(memory_types):
@@ -95,7 +95,7 @@ def main() -> None:
             bbox_to_anchor=(0.5, -0.125),
             fancybox=True,
             shadow=True,
-            ncol=4,
+            ncol=2,
         )
 
         human_array_size = int_to_human(array_size, replace_long=False)
