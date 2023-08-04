@@ -76,7 +76,7 @@ def main() -> None:
     if not os.path.isdir(directory):
         os.makedirs(directory)
 
-    dfs = [(pd.read_csv(f).iloc[:, 0:4], n) for (f, n) in csv_files]
+    dfs = [(pd.read_excel(f).iloc[:, 0:4], n) for (f, n) in csv_files]
 
     if not array_sizes:
         array_sizes = dfs[0][0]["ArraySize"].drop_duplicates()

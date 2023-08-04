@@ -48,7 +48,7 @@ def main() -> None:
     if not os.path.isdir(directory):
         os.makedirs(directory)
 
-    df = pd.read_csv(args.csv_file).iloc[:, 0:4]
+    df = pd.read_excel(args.csv_file).iloc[:, 0:4]
 
     array_sizes = df["ArraySize"].drop_duplicates()
     functions = df["Function"].drop_duplicates()

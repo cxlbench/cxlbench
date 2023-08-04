@@ -38,7 +38,7 @@ if ! [ -f stream_c.exe ]; then
     make stream_c.exe
 fi
 
-numa_nodes=("0" "1" "2" "0,2" "1,2")
+numa_nodes=("0" "1" "2" "0,1" "0,2" "1,2")
 
 cd scripts
 

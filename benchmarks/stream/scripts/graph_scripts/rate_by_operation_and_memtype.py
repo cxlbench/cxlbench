@@ -89,9 +89,9 @@ def main() -> None:
     )
 
     dram_df, cxl_df, combined_df = (
-        pd.read_csv(dram_csv_file).iloc[:, 0:4],
-        pd.read_csv(cxl_csv_file).iloc[:, 0:4],
-        pd.read_csv(dram_cxl_csv_file).iloc[:, 0:4],
+        pd.read_excel(dram_csv_file).iloc[:, 0:4],
+        pd.read_excel(cxl_csv_file).iloc[:, 0:4],
+        pd.read_excel(dram_cxl_csv_file).iloc[:, 0:4],
     )
 
     # https://stackoverflow.com/a/67148732 (filtering via index)

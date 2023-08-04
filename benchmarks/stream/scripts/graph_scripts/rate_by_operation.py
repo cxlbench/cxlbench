@@ -52,7 +52,7 @@ def main() -> None:
     if not os.path.isdir(directory):
         os.makedirs(directory)
 
-    df = pd.read_csv(csv_file).iloc[:, 0:4]
+    df = pd.read_excel(csv_file).iloc[:, 0:4]
 
     array_sizes, functions = (
         args.array_sizes if args.array_sizes else df["ArraySize"].drop_duplicates(),
