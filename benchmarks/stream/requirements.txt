@@ -4,3 +4,4 @@ pandas
 matplotlib
 scipy
 numpy
+openpyxl
