@@ -29,8 +29,16 @@ def main() -> None:
         "-o",
         "--output-dir",
         type=str,
-        default="dump.csv",
+        required=True,
         help="Directory to dump all the graphs into",
+    )
+
+    parser.add_argument(
+        "-t",
+        "--title",
+        type=str,
+        required=True,
+        help="There are so many lines, this one needs an extra title",
     )
 
     args = parser.parse_args()
@@ -103,7 +111,7 @@ def main() -> None:
         ax.set_xlabel("Threads")
         ax.set_ylabel("Best Rate (MB/s)")
 
-        ax.set_title(f"Array size: {human_array_size}")
+        ax.set_title(f"{args.title}\nArray size: {human_array_size}")
 
         f = directory + f"/{human_array_size.replace(' ', '')}.png"
         fig.savefig(f)
