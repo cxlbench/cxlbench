@@ -104,6 +104,7 @@ def main() -> None:
             fancybox=True,
             shadow=True,
             ncol=2,
+            fontsize=10,
         )
 
         human_array_size = int_to_human(array_size, replace_long=False)

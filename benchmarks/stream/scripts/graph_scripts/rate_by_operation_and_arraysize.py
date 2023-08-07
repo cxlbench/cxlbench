@@ -80,7 +80,7 @@ def main() -> None:
     for func in functions:
         filtered = df[df["Function"] == func]
 
-        fig = plt.figure()
+        fig = plt.figure(figsize=(10, 10))
         ax = plt.subplot(111)
 
         for array_size in array_sizes:
@@ -105,6 +105,7 @@ def main() -> None:
             fancybox=True,
             shadow=True,
             ncol=5,
+            fontsize=10,
         )
 
         ax.set_xlabel("Threads")

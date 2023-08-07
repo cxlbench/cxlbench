@@ -62,7 +62,7 @@ def main() -> None:
     for array_size in array_sizes:
         filtered = df[df["ArraySize"] == array_size]
 
-        fig = plt.figure()
+        fig = plt.figure(figsize=(10, 10))
         ax = plt.subplot(111)
 
         for func in functions:
@@ -88,6 +88,7 @@ def main() -> None:
             fancybox=True,
             shadow=True,
             ncol=5,
+            fontsize=10,
         )
 
         ax.yaxis.set_major_formatter(

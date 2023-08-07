@@ -118,7 +118,7 @@ def main() -> None:
             filtered = df[df["ArraySize"] == array_size]
             filtered = filtered[filtered["Function"] == func]
 
-            fig = plt.figure()
+            fig = plt.figure(figsize=(10, 10))
             ax = plt.subplot(111)
 
             for memory in memory_types:
@@ -144,6 +144,7 @@ def main() -> None:
                 fancybox=True,
                 shadow=True,
                 ncol=5,
+                fontsize=10,
             )
 
             human_array_size = int_to_human(array_size, replace_long=False)
