@@ -38,6 +38,11 @@ if ! [ -f stream_c.exe ]; then
     make stream_c.exe
 fi
 
+# Clearing file caches
+sudo sh -c "echo 3 > /proc/sys/vm/drop_caches"
+
+# Near DRAM, Far DRAM, Near CXL, Near DRAM Far DRAM,
+# Near DRAM Far CXL, Near DRAM Near CXL
 numa_nodes=("0" "1" "2" "0,1" "0,2" "1,2")
 
 cd scripts
