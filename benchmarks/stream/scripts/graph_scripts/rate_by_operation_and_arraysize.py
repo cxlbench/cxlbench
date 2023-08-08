@@ -122,6 +122,9 @@ def main() -> None:
         else:
             ax.set_title(original_title)
 
+        ax.grid(True, color="white", linewidth=1.2)
+        fig.gca().set_facecolor((0.9, 0.9, 0.9))
+
         f = directory + f"/{func}.png"
         fig.savefig(f)
         fig.clf()

@@ -111,8 +111,10 @@ def main() -> None:
 
         ax.set_xlabel("Threads")
         ax.set_ylabel("Best Rate (MB/s)")
-
         ax.set_title(f"{args.title}\nArray size: {human_array_size}")
+
+        ax.grid(True, color="white", linewidth=1.2)
+        fig.gca().set_facecolor((0.9, 0.9, 0.9))
 
         f = directory + f"/{human_array_size.replace(' ', '')}.png"
         fig.savefig(f)
