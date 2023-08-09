@@ -48,7 +48,7 @@ def main() -> None:
     if not os.path.isdir(directory):
         os.makedirs(directory)
 
-    df = pd.read_csv(args.csv_file).iloc[:, 0:4]
+    df = pd.read_excel(args.csv_file).iloc[:, 0:4]
 
     array_sizes = df["ArraySize"].drop_duplicates()
     functions = df["Function"].drop_duplicates()
@@ -104,14 +104,17 @@ def main() -> None:
             fancybox=True,
             shadow=True,
             ncol=2,
+            fontsize=10,
         )
 
         human_array_size = int_to_human(array_size, replace_long=False)
 
         ax.set_xlabel("Threads")
         ax.set_ylabel("Best Rate (MB/s)")
-
         ax.set_title(f"{args.title}\nArray size: {human_array_size}")
+
+        ax.grid(True, color="white", linewidth=1.2)
+        fig.gca().set_facecolor((0.9, 0.9, 0.9))
 
         f = directory + f"/{human_array_size.replace(' ', '')}.png"
         fig.savefig(f)

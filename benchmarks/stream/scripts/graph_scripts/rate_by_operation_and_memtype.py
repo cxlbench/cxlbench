@@ -89,9 +89,9 @@ def main() -> None:
     )
 
     dram_df, cxl_df, combined_df = (
-        pd.read_csv(dram_csv_file).iloc[:, 0:4],
-        pd.read_csv(cxl_csv_file).iloc[:, 0:4],
-        pd.read_csv(dram_cxl_csv_file).iloc[:, 0:4],
+        pd.read_excel(dram_csv_file).iloc[:, 0:4],
+        pd.read_excel(cxl_csv_file).iloc[:, 0:4],
+        pd.read_excel(dram_cxl_csv_file).iloc[:, 0:4],
     )
 
     # https://stackoverflow.com/a/67148732 (filtering via index)
@@ -118,7 +118,7 @@ def main() -> None:
             filtered = df[df["ArraySize"] == array_size]
             filtered = filtered[filtered["Function"] == func]
 
-            fig = plt.figure()
+            fig = plt.figure(figsize=(10, 10))
             ax = plt.subplot(111)
 
             for memory in memory_types:
@@ -144,12 +144,16 @@ def main() -> None:
                 fancybox=True,
                 shadow=True,
                 ncol=5,
+                fontsize=10,
             )
 
             human_array_size = int_to_human(array_size, replace_long=False)
 
             ax.set_xlabel("Threads")
             ax.set_ylabel("Best Rate (MB/s)")
+
+            ax.grid(True, color="white", linewidth=1.2)
+            fig.gca().set_facecolor((0.9, 0.9, 0.9))
 
             if title := args.title:
                 ax.set_title(

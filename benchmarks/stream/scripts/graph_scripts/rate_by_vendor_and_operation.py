@@ -76,7 +76,7 @@ def main() -> None:
     if not os.path.isdir(directory):
         os.makedirs(directory)
 
-    dfs = [(pd.read_csv(f).iloc[:, 0:4], n) for (f, n) in csv_files]
+    dfs = [(pd.read_excel(f).iloc[:, 0:4], n) for (f, n) in csv_files]
 
     if not array_sizes:
         array_sizes = dfs[0][0]["ArraySize"].drop_duplicates()
@@ -85,7 +85,7 @@ def main() -> None:
 
     for array_size in array_sizes:
         for func in functions:
-            fig, ax = plt.figure(), plt.subplot(111)
+            fig, ax = plt.figure(figsize=(10, 10)), plt.subplot(111)
 
             for df, n in dfs:
                 # https://stackoverflow.com/a/27975230 (Filtering by row value)
@@ -112,7 +112,7 @@ def main() -> None:
                 fancybox=True,
                 shadow=True,
                 ncol=2,
-                fontsize=7.25,
+                fontsize=10,
             )
 
             ax.yaxis.set_major_formatter(
@@ -127,6 +127,9 @@ def main() -> None:
 
             ax.set_xlabel("Threads")
             ax.set_ylabel("Best Rate (MB/s)")
+
+            ax.grid(True, color="white", linewidth=1.2)
+            fig.gca().set_facecolor((0.9, 0.9, 0.9))
 
             default_title = f"Function: {func}, Array size: {human_array_size}"
 

@@ -70,7 +70,7 @@ def main() -> None:
     if not os.path.isdir(directory):
         os.makedirs(directory)
 
-    df = pd.read_csv(args.csv_file).iloc[:, 0:4]
+    df = pd.read_excel(args.csv_file).iloc[:, 0:4]
 
     array_sizes, functions = (
         args.array_sizes if args.array_sizes else df["ArraySize"].drop_duplicates(),
@@ -80,7 +80,7 @@ def main() -> None:
     for func in functions:
         filtered = df[df["Function"] == func]
 
-        fig = plt.figure()
+        fig = plt.figure(figsize=(10, 10))
         ax = plt.subplot(111)
 
         for array_size in array_sizes:
@@ -105,6 +105,7 @@ def main() -> None:
             fancybox=True,
             shadow=True,
             ncol=5,
+            fontsize=10,
         )
 
         ax.set_xlabel("Threads")
@@ -120,6 +121,9 @@ def main() -> None:
             ax.set_title(f"{title}\n{original_title}")
         else:
             ax.set_title(original_title)
+
+        ax.grid(True, color="white", linewidth=1.2)
+        fig.gca().set_facecolor((0.9, 0.9, 0.9))
 
         f = directory + f"/{func}.png"
         fig.savefig(f)

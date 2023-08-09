@@ -52,7 +52,7 @@ def main() -> None:
     if not os.path.isdir(directory):
         os.makedirs(directory)
 
-    df = pd.read_csv(csv_file).iloc[:, 0:4]
+    df = pd.read_excel(csv_file).iloc[:, 0:4]
 
     array_sizes, functions = (
         args.array_sizes if args.array_sizes else df["ArraySize"].drop_duplicates(),
@@ -62,7 +62,7 @@ def main() -> None:
     for array_size in array_sizes:
         filtered = df[df["ArraySize"] == array_size]
 
-        fig = plt.figure()
+        fig = plt.figure(figsize=(10, 10))
         ax = plt.subplot(111)
 
         for func in functions:
@@ -88,6 +88,7 @@ def main() -> None:
             fancybox=True,
             shadow=True,
             ncol=5,
+            fontsize=10,
         )
 
         ax.yaxis.set_major_formatter(
@@ -103,6 +104,9 @@ def main() -> None:
         ax.set_xlabel("Threads")
         ax.set_ylabel("Best Rate (MB/s)")
         ax.set_title(f"Array size: {human_array_size}")
+
+        ax.grid(True, color="white", linewidth=1.2)
+        fig.gca().set_facecolor((0.9, 0.9, 0.9))
 
         f = directory + f"/{human_array_size.replace(' ', '')}.png"
         fig.savefig(f)

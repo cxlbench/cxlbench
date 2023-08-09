@@ -38,7 +38,12 @@ if ! [ -f stream_c.exe ]; then
     make stream_c.exe
 fi
 
-numa_nodes=("0" "1" "2" "0,2" "1,2")
+# Clearing file caches
+sudo sh -c "echo 3 > /proc/sys/vm/drop_caches"
+
+# Near DRAM, Far DRAM, Near CXL, Near DRAM Far DRAM,
+# Near DRAM Far CXL, Near DRAM Near CXL
+numa_nodes=("0" "1" "2" "0,1" "0,2" "1,2")
 
 cd scripts
 
@@ -49,13 +54,13 @@ do
     stem="$2_$numa"
 
     mkdir -p $1/$stem/best_of/
-    ./best_of.py -c $1/data/$stem.csv > $1/$stem/best_of/$stem.txt
+    ./best_of.py -c $1/data/$stem.xlsx > $1/$stem/best_of/$stem.txt
 
     ./graph_scripts/rate_by_operation.py \
-        -c $1/data/$stem.csv \
+        -c $1/data/$stem.xlsx \
         -o $1/$stem/rate_by_operation/
 
     ./graph_scripts/rate_by_operation_and_arraysize.py \
-        -c $1/data/$stem.csv \
+        -c $1/data/$stem.xlsx \
         -o $1/$stem/rate_by_operation_and_arraysize/
 done
