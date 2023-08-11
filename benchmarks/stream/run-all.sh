@@ -38,6 +38,15 @@ if ! [ -f stream_c.exe ]; then
     make stream_c.exe
 fi
 
+# Saving whatever mode was there before
+cpu_mode=$(cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor | uniq)
+
+if [ "$cpu_mode" != "performance" ]; then
+    echo "Setting CPU cores to performance mode"
+    echo "performance" | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
+fi
+
+
 # Clearing file caches
 sudo sh -c "echo 3 > /proc/sys/vm/drop_caches"
 
@@ -64,3 +73,8 @@ do
         -c $1/data/$stem.xlsx \
         -o $1/$stem/rate_by_operation_and_arraysize/
 done
+
+if [ "$cpu_mode" != "performance" ]; then
+    echo "Setting CPU cores back to $cpu_mode mode"
+    echo "$cpu_mode" | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
+fi
