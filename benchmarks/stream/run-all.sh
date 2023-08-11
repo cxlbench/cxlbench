@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-if [ -z "$1" ] || [ -e "$2" ]; then
-    echo "Usage: ./run-all.sh <output-directory> <file-prefix>"
+if [ -z "$1" ] || [ -e "$2" ] || [ -e "$3" ]; then
+    echo "Usage: ./run-all.sh <output-directory> <file-prefix> <cpunodebind>"
     exit 1
 fi
 
@@ -49,7 +49,7 @@ cd scripts
 
 for nn in "${numa_nodes[@]}"
 do
-    ./stream_generate_results.py -o $1/data -p $2 -b ../stream_c.exe -n $nn
+    ./stream_generate_results.py -o $1/data -p $2 -b ../stream_c.exe -n $nn --cpu $3
     numa=$(echo "$nn" | tr -d ',')
     stem="$2_$numa"
 
