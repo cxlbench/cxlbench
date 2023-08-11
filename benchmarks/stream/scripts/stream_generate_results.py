@@ -147,6 +147,7 @@ def main() -> None:
 
     print(f"Binary file: {args.binary_path}")
     print(f"NUMA nodes: {args.numa_nodes}")
+    print(f"CPU node bind: {args.cpu}")
     print(f"Repetitions (ntimes): {args.ntimes}")
     print(f"Output file: {relative_path}")
     print(f"Array sizes: {', '.join(str(x) for x in args.array_sizes)}")
