@@ -124,6 +124,14 @@ def main() -> None:
         help="The prefix for the output files",
     )
 
+    parser.add_argument(
+        "--cpu",
+        type=int,
+        required=False,
+        default=0,
+        help="The CPU socket which 'cpunodebind' is attached to"
+    )
+
     args = parser.parse_args()
 
     output_file = dump_file_name(args.numa_nodes.replace(",", ""))
@@ -139,6 +147,7 @@ def main() -> None:
 
     print(f"Binary file: {args.binary_path}")
     print(f"NUMA nodes: {args.numa_nodes}")
+    print(f"CPU node bind: {args.cpu}")
     print(f"Repetitions (ntimes): {args.ntimes}")
     print(f"Output file: {relative_path}")
     print(f"Array sizes: {', '.join(str(x) for x in args.array_sizes)}")
@@ -161,7 +170,7 @@ def main() -> None:
 
             cmd = (
                 f"export OMP_NUM_THREADS={thread_count} && "
-                f"numactl --cpunodebind=0 "
+                f"numactl --cpunodebind={args.cpu} "
                 f"./{args.binary_path} --ntimes {args.ntimes} "
                 f"--numa-nodes {args.numa_nodes} --array-size {array_size}"
             )

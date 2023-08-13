@@ -4,6 +4,7 @@ import argparse
 import os
 
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter
 import pandas as pd
 
 from utils import file_exists, int_to_human, smooth_line
@@ -145,6 +146,14 @@ def main() -> None:
                 shadow=True,
                 ncol=5,
                 fontsize=10,
+            )
+
+            ax.yaxis.set_major_formatter(
+                FuncFormatter(
+                    lambda x, _: int_to_human(x)
+                    if x < 1_000_000
+                    else int_to_human(x, fmt="%.1f")
+                )
             )
 
             human_array_size = int_to_human(array_size, replace_long=False)

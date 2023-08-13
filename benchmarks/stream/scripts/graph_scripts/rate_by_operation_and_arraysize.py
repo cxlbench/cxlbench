@@ -4,6 +4,7 @@ import argparse
 import os
 
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter
 import pandas as pd
 
 from utils import file_exists, smooth_line, int_to_human
@@ -106,6 +107,14 @@ def main() -> None:
             shadow=True,
             ncol=5,
             fontsize=10,
+        )
+
+        ax.yaxis.set_major_formatter(
+            FuncFormatter(
+                lambda x, _: int_to_human(x)
+                if x < 1_000_000
+                else int_to_human(x, fmt="%.1f")
+            )
         )
 
         ax.set_xlabel("Threads")
