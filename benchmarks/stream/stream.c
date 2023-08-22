@@ -221,7 +221,7 @@ int main(int argc, char **argv) {
         to_node = numa_nodes[1];
     }
 
-    int numa_node_size = (stream_array_size + offset) * sizeof(STREAM_TYPE);
+    uint64_t numa_node_size = (stream_array_size + offset) * sizeof(STREAM_TYPE);
 
     numa_set_strict(1);
 
@@ -578,6 +578,11 @@ uint64_t *parse_cli_args(int argc, char **argv, uint64_t *numa_nodes) {
 
 uint64_t convert_array_size(char *s) {
     char last_char = s[strlen(s) - 1];
+
+    if (isdigit(last_char)) {
+        return atoll(s);
+    }
+
     uint64_t last_digit_index = strlen(s) - (isdigit(last_char) ? 1 : 2);
     char *s0 = strndup(s, last_digit_index);
 
