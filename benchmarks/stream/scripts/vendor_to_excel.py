@@ -6,7 +6,7 @@ import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.worksheet.filters import FilterColumn, Filters
 
-from graph_scripts.utils import file_exists
+from graph_scripts.utils import file_exists, remove_direction_column
 
 
 def main() -> None:
@@ -28,15 +28,15 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    df = pd.read_excel(args.csv_file).iloc[:, 0:4]
+    df = remove_direction_column(pd.read_excel(args.csv_file))
 
     array_sizes = df["ArraySize"].drop_duplicates()
     functions = df["Function"].drop_duplicates()
     threads = df["Threads"].drop_duplicates()
 
     dram_to_cxl_df, cxl_to_dram_df = (
-        df.copy()[df.index.map(lambda i: i % 8 in (0, 2, 5, 7))].reset_index(drop=True),
-        df.copy()[df.index.map(lambda i: i % 8 in (1, 3, 4, 6))].reset_index(drop=True),
+        df.copy()[df.index.map(lambda i: i % 8 in range(0, 4))],
+        df.copy()[df.index.map(lambda i: i % 8 in range(4, 8))],
     )
 
     dram_to_cxl_df.rename(columns={"BestRateMBs": "DRAM to CXL"}, inplace=True)

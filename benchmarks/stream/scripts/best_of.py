@@ -5,15 +5,7 @@ import argparse
 import humanize
 import pandas as pd
 
-from graph_scripts.utils import file_exists
-
-ARRAY_SIZES: list[int] = [
-    100_000_000,
-    200_000_000,
-    300_000_000,
-    400_000_000,
-    430_080_000,
-]
+from graph_scripts.utils import file_exists, remove_direction_column
 
 
 def main() -> None:
@@ -25,37 +17,32 @@ def main() -> None:
         "-c", "--csv-file", type=file_exists, required=True, help="CSV file to process"
     )
 
-    parser.add_argument(
-        "-a",
-        "--array-sizes",
-        type=int,
-        nargs="+",
-        required=False,
-        help="The array sizes to be shown",
-    )
-
     args = parser.parse_args()
 
-    df = pd.read_excel(args.csv_file).iloc[:, 0:4]
-    array_sizes = args.array_sizes if args.array_sizes else ARRAY_SIZES
+    df = remove_direction_column(pd.read_excel(args.csv_file))
 
-    df = df[df["ArraySize"].isin(array_sizes)]
-
+    # Group by Array size, threads, then function,
+    # and average the best rate of the grouping due to pure memory types
+    # having 2 results for the same group of attributes previously mentioned
     df = (
         df.groupby(["ArraySize", "Threads", "Function"])["BestRateMBs"]
         .mean()
         .reset_index()
     )
 
+    # Sometimes, file columns will be out of order, so this flips the two
+    # columns "ArraySize" and "Threads", with with their headers
     if df.columns[0] != "ArraySize":
         df["ArraySize"], df["Threads"] = df["Threads"], df["ArraySize"]
         df.columns = ["Threads", "ArraySize", "Function", "BestRateMBs"]
 
-    idx = df.groupby("ArraySize")["BestRateMBs"].idxmax()
+    # Get the max bandwidth for each array size group
+    idx = df.groupby(["ArraySize"])["BestRateMBs"].idxmax()
     df = df.loc[idx]
 
+    # Make the numbers readable by humans
     df["ArraySize"] = df["ArraySize"].apply(
-        lambda x: humanize.intword(x, format="%.0f")
+        lambda x: humanize.intword(x, format="%.1f")
     )
 
     print(df.to_string(index=False))

@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 import pandas as pd
 
-from utils import file_exists, smooth_line, int_to_human
+from utils import file_exists, smooth_line, int_to_human, remove_direction_column
 
 # Supressing a warning that appears when more than 20 figures are opened
 plt.rcParams["figure.max_open_warning"] = 0
@@ -71,7 +71,7 @@ def main() -> None:
     if not os.path.isdir(directory):
         os.makedirs(directory)
 
-    df = pd.read_excel(args.csv_file).iloc[:, 0:4]
+    df = remove_direction_column(pd.read_excel(args.csv_file))
 
     array_sizes, functions = (
         args.array_sizes if args.array_sizes else df["ArraySize"].drop_duplicates(),
