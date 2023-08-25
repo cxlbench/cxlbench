@@ -22,8 +22,8 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    # Read CSV file, write to new Excel file
     df = pd.read_csv(args.csv_file)
-
     df.to_excel(args.output, index=False)
 
 

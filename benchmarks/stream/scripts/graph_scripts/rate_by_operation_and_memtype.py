@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 import pandas as pd
 
-from utils import file_exists, int_to_human, smooth_line
+from utils import file_exists, int_to_human, smooth_line, remove_direction_column
 
 # Supressing a warning that appears when more than 20 figures are opened
 plt.rcParams["figure.max_open_warning"] = 0
@@ -90,16 +90,26 @@ def main() -> None:
     )
 
     dram_df, cxl_df, combined_df = (
-        pd.read_excel(dram_csv_file).iloc[:, 0:4],
-        pd.read_excel(cxl_csv_file).iloc[:, 0:4],
-        pd.read_excel(dram_cxl_csv_file).iloc[:, 0:4],
+        remove_direction_column(pd.read_excel(dram_csv_file)),
+        remove_direction_column(pd.read_excel(cxl_csv_file)),
+        pd.read_excel(dram_cxl_csv_file),
     )
 
+    direction_column_exists = "Direction" in combined_df.columns
+
+    combined_df = remove_direction_column(combined_df)
+
     # https://stackoverflow.com/a/67148732 (filtering via index)
-    dram_cxl_df, cxl_dram_df = (
-        combined_df.copy()[combined_df.index.map(lambda i: i % 8 in (0, 2, 5, 7))],
-        combined_df.copy()[combined_df.index.map(lambda i: i % 8 in (1, 3, 4, 6))],
-    )
+    if direction_column_exists:
+        dram_cxl_df, cxl_dram_df = (
+            combined_df.copy()[combined_df.index.map(lambda i: i % 8 in range(0, 4))],
+            combined_df.copy()[combined_df.index.map(lambda i: i % 8 in range(4, 8))],
+        )
+    else:
+        dram_cxl_df, cxl_dram_df = (
+            combined_df.copy()[combined_df.index.map(lambda i: i % 8 in (0, 2, 5, 7))],
+            combined_df.copy()[combined_df.index.map(lambda i: i % 8 in (1, 3, 4, 6))],
+        )
 
     dram_df["MemoryType"] = "DRAM"
     cxl_df["MemoryType"] = "CXL"

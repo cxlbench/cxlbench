@@ -352,7 +352,7 @@ int main(int argc, char **argv) {
 #endif
         times[0][k] = mysecond() - times[0][k];
 
-        times[1][k] = mysecond();
+        times[5][k] = mysecond();
 #ifdef TUNED
         tuned_STREAM_Scale(scalar, a1, b2);
 #else
@@ -361,7 +361,7 @@ int main(int argc, char **argv) {
         for (j = 0; j < stream_array_size; j++)
             a1[j] = scalar * b2[j];
 #endif
-        times[1][k] = mysecond() - times[1][k];
+        times[5][k] = mysecond() - times[5][k];
 
         times[2][k] = mysecond();
 #ifdef TUNED
@@ -374,7 +374,7 @@ int main(int argc, char **argv) {
 #endif
         times[2][k] = mysecond() - times[2][k];
 
-        times[3][k] = mysecond();
+        times[7][k] = mysecond();
 #ifdef TUNED
         tuned_STREAM_Triad(scalar, a2, b2, c2);
 #else
@@ -383,7 +383,7 @@ int main(int argc, char **argv) {
         for (j = 0; j < stream_array_size; j++)
             a1[j] = b2[j] + scalar * c2[j];
 #endif
-        times[3][k] = mysecond() - times[3][k];
+        times[7][k] = mysecond() - times[7][k];
 
         times[4][k] = mysecond();
 #ifdef TUNED
@@ -396,7 +396,7 @@ int main(int argc, char **argv) {
 #endif
         times[4][k] = mysecond() - times[4][k];
 
-        times[5][k] = mysecond();
+        times[1][k] = mysecond();
 #ifdef TUNED
         tuned_STREAM_Scale(scalar, a2, b1);
 #else
@@ -405,7 +405,7 @@ int main(int argc, char **argv) {
         for (j = 0; j < stream_array_size; j++)
             a2[j] = scalar * b1[j];
 #endif
-        times[5][k] = mysecond() - times[5][k];
+        times[1][k] = mysecond() - times[1][k];
 
         times[6][k] = mysecond();
 #ifdef TUNED
@@ -418,7 +418,7 @@ int main(int argc, char **argv) {
 #endif
         times[6][k] = mysecond() - times[6][k];
 
-        times[7][k] = mysecond();
+        times[3][k] = mysecond();
 #ifdef TUNED
         tuned_STREAM_Triad(scalar, a2, b1, c1);
 #else
@@ -427,7 +427,7 @@ int main(int argc, char **argv) {
         for (j = 0; j < stream_array_size; j++)
             a2[j] = b1[j] + scalar * c1[j];
 #endif
-        times[7][k] = mysecond() - times[7][k];
+        times[3][k] = mysecond() - times[3][k];
     }
 
     /*	--- SUMMARY --- */
@@ -441,12 +441,20 @@ int main(int argc, char **argv) {
         }
     }
 
-    printf("Function        BestRateMBs AvgTime      MinTime      MaxTime\n");
+    printf(
+        "Function     Direction    BestRateMBs     AvgTime      MinTime      MaxTime\n");
     for (j = 0; j < TIMES_LEN; j++) {
         avgtime[j] = avgtime[j] / (double)(ntimes - 1);
 
-        printf("%s%12.1f  %11.6f  %11.6f  %11.6f\n", label[j % 4],
-               1.0E-06 * bytes[j] / mintime[j], avgtime[j], mintime[j], maxtime[j]);
+        if (j < (TIMES_LEN / 2)) {
+            printf("%s  %ld->%ld  %18.1f  %11.6f  %11.6f  %11.6f\n", label[j % 4],
+                   numa_nodes[0], numa_nodes[1], 1.0E-06 * bytes[j] / mintime[j],
+                   avgtime[j], mintime[j], maxtime[j]);
+        } else {
+            printf("%s  %ld->%ld  %18.1f  %11.6f  %11.6f  %11.6f\n", label[j % 4],
+                   numa_nodes[1], numa_nodes[0], 1.0E-06 * bytes[j] / mintime[j],
+                   avgtime[j], mintime[j], maxtime[j]);
+        }
     }
     printf(HLINE);
 

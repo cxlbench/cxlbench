@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 import pandas as pd
 
-from utils import file_exists, int_to_human, smooth_line
+from utils import file_exists, int_to_human, smooth_line, remove_direction_column
 
 # Supressing a warning that appears when more than 20 figures are opened
 plt.rcParams["figure.max_open_warning"] = 0
@@ -49,14 +49,15 @@ def main() -> None:
     if not os.path.isdir(directory):
         os.makedirs(directory)
 
-    df = pd.read_excel(args.csv_file).iloc[:, 0:4]
+    df = remove_direction_column(pd.read_excel(args.csv_file))
 
     array_sizes = df["ArraySize"].drop_duplicates()
     functions = df["Function"].drop_duplicates()
 
+    # https://stackoverflow.com/a/67148732 (filtering via index)
     dram_to_cxl_df, cxl_to_dram_df = (
-        df.copy()[df.index.map(lambda i: i % 8 in (0, 2, 5, 7))].reset_index(drop=True),
-        df.copy()[df.index.map(lambda i: i % 8 in (1, 3, 4, 6))].reset_index(drop=True),
+        df.copy()[df.index.map(lambda i: i % 8 in range(0, 4))],
+        df.copy()[df.index.map(lambda i: i % 8 in range(4, 8))],
     )
 
     dram_to_cxl_df["MemoryType"] = "DRAM to CXL"

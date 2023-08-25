@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 import pandas as pd
 
-from utils import file_exists, int_to_human, smooth_line
+from utils import file_exists, int_to_human, smooth_line, remove_direction_column
 
 
 def main() -> None:
@@ -52,7 +52,7 @@ def main() -> None:
     if not os.path.isdir(directory):
         os.makedirs(directory)
 
-    df = pd.read_excel(csv_file).iloc[:, 0:4]
+    df = remove_direction_column(pd.read_excel(csv_file))
 
     array_sizes, functions = (
         args.array_sizes if args.array_sizes else df["ArraySize"].drop_duplicates(),
