@@ -217,10 +217,6 @@ int main(int argc, char **argv) {
     int from_node = numa_nodes[0];
     int to_node = numa_nodes[0];
 
-    if (numa_nodes[1] != -1) {
-        to_node = numa_nodes[1];
-    }
-
     uint64_t numa_node_size = (stream_array_size + offset) * sizeof(STREAM_TYPE);
 
     numa_set_strict(1);
@@ -266,8 +262,8 @@ int main(int argc, char **argv) {
            BytesPerWord * ((double)stream_array_size / 1024.0 / 1024.0),
            BytesPerWord * ((double)stream_array_size / 1024.0 / 1024.0 / 1024.0));
     printf("Total memory required = %.1f MiB (= %.1f GiB).\n",
-           (3.0 * BytesPerWord) * ((double)stream_array_size / 1024.0 / 1024.),
-           (3.0 * BytesPerWord) * ((double)stream_array_size / 1024.0 / 1024. / 1024.));
+           (6.0 * BytesPerWord) * ((double)stream_array_size / 1024.0 / 1024.),
+           (6.0 * BytesPerWord) * ((double)stream_array_size / 1024.0 / 1024. / 1024.));
     printf("Each kernel will be executed %d times.\n", ntimes);
     printf(" The *best* time for each kernel (excluding the first iteration)\n");
     printf(" will be used to compute the reported bandwidth.\n");
@@ -441,9 +437,21 @@ int main(int argc, char **argv) {
         }
     }
 
+    int REPORT_LEN = TIMES_LEN;
+    if (numa_nodes[0] == numa_nodes[1]) {
+        /* A single NUMA node is tested, make sure that the 
+         * report considers this fact to consolidate the best
+         */
+        REPORT_LEN = TIMES_LEN/2;
+        for (k = 1; k < REPORT_LEN; k++) {
+            mintime[k] = MIN(mintime[k], mintime[k+REPORT_LEN]);
+            maxtime[k] = MAX(maxtime[k], maxtime[k+REPORT_LEN]);
+        }
+    }
+
     printf(
         "Function     Direction    BestRateMBs     AvgTime      MinTime      MaxTime\n");
-    for (j = 0; j < TIMES_LEN; j++) {
+    for (j = 0; j < REPORT_LEN; j++) {
         avgtime[j] = avgtime[j] / (double)(ntimes - 1);
 
         if (j < (TIMES_LEN / 2)) {
@@ -497,7 +505,7 @@ static struct option long_options[6] = {
 
 void parse_numa_from_cli(uint64_t *numa_nodes, char *arg) {
     if (strchr(arg, ',') == NULL) {
-        numa_nodes[0] = atoll(arg);
+        numa_nodes[0] = numa_nodes[1] = atoll(arg);
     } else {
         char *s1 = strdup(arg);
         char *s0 = strsep(&s1, ",");
