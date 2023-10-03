@@ -87,11 +87,23 @@ def format_stream_output(
     -------------------------------------------------------------
     ```
     """
-    selected_output = s.splitlines()[-12:-3]
+    lines = [str(x, "utf-8", "ignore").strip() for x in s.strip().splitlines()]
 
-    lst: list[list[str]] = [
-        WHITESPACE_REPLACE.split(str(x, "utf-8", "ignore")) for x in selected_output
-    ]
+    start, end = 0, len(lines)
+
+    for i, line in enumerate(lines):
+        if "Function" in line and "BestRateMBs" in line:
+            start = i
+            break
+
+    for i, line in enumerate(lines[start + 1 :]):
+        if line.startswith("-"):
+            end = i
+            break
+
+    selected_output = lines[start : start + end + 1]
+
+    lst: list[list[str]] = [WHITESPACE_REPLACE.split(x) for x in selected_output]
 
     lst[0].insert(0, "ArraySize")
     lst[0].insert(0, "Threads")
