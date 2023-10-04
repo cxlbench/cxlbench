@@ -599,7 +599,7 @@ uint64_t convert_array_size(char *s) {
         return atoll(s);
     }
 
-    uint64_t last_digit_index = strlen(s) - (isdigit(last_char) ? 1 : 2);
+    uint64_t last_digit_index = strlen(s) - 1;
     char *s0 = strndup(s, last_digit_index);
 
     uint64_t base = atoll(s0);
