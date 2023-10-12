@@ -188,14 +188,15 @@ extern void tuned_STREAM_Triad(STREAM_TYPE, STREAM_TYPE *, STREAM_TYPE *, STREAM
 extern int omp_get_num_threads();
 #endif
 
-static struct option long_options[7] = {
+static struct option long_options[8] = {
     {"ntimes", optional_argument, 0, 't'},
     {"array-size", optional_argument, 0, 'a'},
     {"offset", optional_argument, 0, 'o'},
     {"numa-nodes", required_argument, 0, 'n'},
     {"auto-array-size", no_argument, 0, 's'},
     {"help", no_argument, 0, 'h'},
-    {"malloc", no_argument, 0, 'm'}
+    {"malloc", no_argument, 0, 'm'},
+    {0, 0, 0, 0}
 };
 
 static void parse_numa_from_cli(uint64_t *numa_nodes, char *arg) {
@@ -224,10 +225,10 @@ static char *HELP[] = {
     "node(s) to allocate the arrays using numa_alloc_onnode",
     "     --auto-array-size, -s                                    : Array will be "
     "socket's L3 cache divided by 2",
-    "      --malloc, -m                                            : Use normal malloc "
-    "to allocate "
+    "      --malloc, -m                                            : Use normal malloc to allocate "
     "the arrays",
-    "     --help, -h                                               : Print this message"};
+    "     --help, -h                                               : Print this message"
+};
 
 static void output_help() {
     printf("STREAM Benchmark\n");
@@ -302,16 +303,19 @@ static uint64_t *parse_cli_args(int argc, char **argv, uint64_t *numa_nodes) {
 
         switch (c) {
         case 't':
-            if (arg)
+            if (arg) {
                 ntimes = atoi(arg);
+            }
             break;
         case 'a':
-            if (arg)
+            if (arg) {
                 stream_array_size = convert_array_size(arg);
+            }
             break;
         case 'o':
-            if (arg)
+            if (arg) {
                 offset = atoi(arg);
+            }
             break;
         case 'n':
             if (optarg) {
@@ -332,6 +336,9 @@ static uint64_t *parse_cli_args(int argc, char **argv, uint64_t *numa_nodes) {
         case 'm':
             use_malloc = true;
         default:
+            printf("unrecognized option\n");
+            output_help();
+            exit(1);
             break;
         }
     }
