@@ -54,6 +54,7 @@
 #include <string.h>
 #include <sys/time.h>
 #include <unistd.h>
+#include <stdbool.h>
 
 /*-----------------------------------------------------------------------
  * INSTRUCTIONS:
@@ -174,16 +175,9 @@ static const STREAM_TYPE A1_TUNED = 1.0, A2_TUNED = 1.0, B1_TUNED = 2.0, B2_TUNE
                          C1_TUNED = 0.0, C2_TUNED = 0.0;
 
 static const int TIMES_LEN = 8;
+static bool use_malloc = false;
 
 extern double mysecond();
-extern void checkSTREAMresults();
-extern uint64_t convert_array_size(char *);
-extern void output_help();
-extern uint64_t calculate_array_size();
-extern uint64_t *parse_cli_args(int, char **, uint64_t *);
-extern void parse_numa_from_cli(uint64_t *, char *);
-extern void upperbound_errors(int *, int *, double, STREAM_TYPE *, STREAM_TYPE,
-                              STREAM_TYPE, char *);
 #ifdef TUNED
 extern void tuned_STREAM_Copy(STREAM_TYPE *, STREAM_TYPE *);
 extern void tuned_STREAM_Scale(STREAM_TYPE, STREAM_TYPE *, STREAM_TYPE *);
@@ -193,12 +187,392 @@ extern void tuned_STREAM_Triad(STREAM_TYPE, STREAM_TYPE *, STREAM_TYPE *, STREAM
 #ifdef _OPENMP
 extern int omp_get_num_threads();
 #endif
+
+static struct option long_options[7] = {
+    {"ntimes", optional_argument, 0, 't'},
+    {"array-size", optional_argument, 0, 'a'},
+    {"offset", optional_argument, 0, 'o'},
+    {"numa-nodes", required_argument, 0, 'n'},
+    {"auto-array-size", no_argument, 0, 's'},
+    {"help", no_argument, 0, 'h'},
+    {"malloc", no_argument, 0, 'm'}
+};
+
+static void parse_numa_from_cli(uint64_t *numa_nodes, char *arg) {
+    if (strchr(arg, ',') == NULL) {
+        numa_nodes[0] = numa_nodes[1] = atoll(arg);
+    } else {
+        char *s1 = strdup(arg);
+        char *s0 = strsep(&s1, ",");
+
+        numa_nodes[0] = atoll(s0);
+        numa_nodes[1] = atoll(s1);
+
+        free(s0);
+    }
+}
+
+static const int HELP_LEN = 7;
+static char *HELP[] = {
+    "     --ntimes, -t <integer-value>                             : Number of times to "
+    "run benchmark: Default 10",
+    "     --array-size, -a <integer-value>|<integer-value><K|M|G>  : Size of numa node "
+    "arrays: Default 1000000",
+    "     --offset, -o <integer-value>                             : Change relative "
+    "alignment of arrays: Default 0",
+    "     --numa-nodes, -n <integer>,<integer>|<integer>           : Numa "
+    "node(s) to allocate the arrays using numa_alloc_onnode",
+    "     --auto-array-size, -s                                    : Array will be "
+    "socket's L3 cache divided by 2",
+    "      --malloc, -m                                            : Use normal malloc "
+    "to allocate "
+    "the arrays",
+    "     --help, -h                                               : Print this message"};
+
+static void output_help() {
+    printf("STREAM Benchmark\n");
+    for (int i = 0; i < HELP_LEN; i++) {
+        printf("%s\n", HELP[i]);
+    }
+
+    exit(EXIT_SUCCESS);
+}
+
+static uint64_t calculate_array_size() {
+    // `_SC_LEVEL3_CACHE_SIZE` is used instead of sysfs's `size` for more precision.
+    uint64_t size = sysconf(_SC_LEVEL3_CACHE_SIZE) / 2;
+
+    return size;
+}
+
+static uint64_t convert_array_size(char *s) {
+    char last_char = s[strlen(s) - 1];
+
+    if (isdigit(last_char)) {
+        return atoll(s);
+    }
+
+    uint64_t last_digit_index = strlen(s) - 1;
+    char *s0 = strndup(s, last_digit_index);
+
+    uint64_t base = atoll(s0);
+
+    switch (last_char) {
+    case 'K':
+        base *= 1000;
+        break;
+    case 'M':
+        base *= 1e6; // 1 million
+        break;
+    case 'G':
+        base *= 1e9; // 1 billion
+        break;
+    default:
+        break;
+    }
+
+    free(s0);
+
+    return base;
+}
+
+static uint64_t *parse_cli_args(int argc, char **argv, uint64_t *numa_nodes) {
+    int c;
+    bool found_numa = false;
+
+    if (argc == 1) {
+        output_help();
+        exit(1);
+    }
+
+    while (1) {
+        int option_index = 0;
+
+        c = getopt_long(argc, argv, "t:a:o:n:s:hm", long_options, &option_index);
+        if (c == -1) {
+            break;
+        }
+
+        if (long_options[option_index].flag != 0) {
+            break;
+        }
+
+        // Optional arguments take this, while required arguments take `optarg`
+        char *arg = argv[optind];
+
+        switch (c) {
+        case 't':
+            if (arg)
+                ntimes = atoi(arg);
+            break;
+        case 'a':
+            if (arg)
+                stream_array_size = convert_array_size(arg);
+            break;
+        case 'o':
+            if (arg)
+                offset = atoi(arg);
+            break;
+        case 'n':
+            if (optarg) {
+                parse_numa_from_cli(numa_nodes, optarg);
+                found_numa = true;
+            } else {
+                printf("-n requires a value");
+                output_help();
+                exit(1);
+            }
+            break;
+        case 's':
+            stream_array_size = calculate_array_size();
+            break;
+        case 'h':
+            output_help();
+            break;
+        case 'm':
+            use_malloc = true;
+        default:
+            break;
+        }
+    }
+
+    if (!found_numa && !use_malloc) {
+        printf("No numa nodes inputted. Aborting.\n");
+        output_help();
+        exit(1);
+    }
+
+    if (found_numa && use_malloc) {
+        printf("Only one of --malloc or --numa-nodes is permitted.\n");
+        output_help();
+        exit(1);
+    }
+
+    if (use_malloc) {
+        numa_nodes[0] = numa_nodes[1] = 0;
+    }
+
+    return numa_nodes;
+}
+
+#define M 20
+
+static int checktick(void) {
+    int i, minDelta, Delta;
+    double t1, t2, timesfound[M];
+
+    /*  Collect a sequence of M unique time values from the system. */
+
+    for (i = 0; i < M; i++) {
+        t1 = mysecond();
+        while (((t2 = mysecond()) - t1) < 1.0E-6)
+            ;
+        timesfound[i] = t1 = t2;
+    }
+
+    /*
+     * Determine the minimum difference between these M values.
+     * This result will be our estimate (in microseconds) for the
+     * clock granularity.
+     */
+
+    minDelta = 1000000;
+    for (i = 1; i < M; i++) {
+        Delta = (int)(1.0E6 * (timesfound[i] - timesfound[i - 1]));
+        minDelta = MIN(minDelta, MAX(Delta, 0));
+    }
+
+    return (minDelta);
+}
+
+/* A gettimeofday routine to give access to the wall
+   clock timer on most UNIX-like systems.  */
+
+#include <sys/time.h>
+
+double mysecond() {
+    struct timeval tp;
+    struct timezone tzp;
+
+    gettimeofday(&tp, &tzp);
+    return ((double)tp.tv_sec + (double)tp.tv_usec * 1.e-6);
+}
+
+static void upperbound_errors(int *err, int *ierr, double epsilon, STREAM_TYPE *x,
+                              STREAM_TYPE xj, STREAM_TYPE x_avg_err, char *x_array_name) {
+    if (abs(x_avg_err / xj) > epsilon) {
+        (*err)++;
+        printf("Failed Validation on array %s, AvgRelAbsErr > epsilon (%e)\n",
+               x_array_name, epsilon);
+        printf("     Expected Value: %e, AvgAbsErr: %e, AvgRelAbsErr: %e\n", xj,
+               x_avg_err, abs(x_avg_err) / xj);
+        *ierr = 0;
+        for (ssize_t j = 0; j < stream_array_size; j++) {
+            if (abs(x[j] / xj - 1.0) > epsilon) {
+                (*ierr)++;
+#ifdef VERBOSE
+                if (ierr < 10) {
+                    printf("         array %s: index: %ld, expected: %e, observed: %e, "
+                           "relative error: %e\n",
+                           x_array_name, j, xj, x[j], abs((xj - x[j]) / x_avg_err));
+                }
+#endif
+            }
+        }
+        printf("     For array %s[], %d errors were found.\n", x_array_name, *ierr);
+    }
+}
+
+#ifndef abs
+#define abs(a) ((a) >= 0 ? (a) : -(a))
+#endif
+static void checkSTREAMresults() {
+    STREAM_TYPE a1j, a2j, b1j, b2j, c1j, c2j, scalar;
+    STREAM_TYPE a1SumErr, a2SumErr, b1SumErr, b2SumErr, c1SumErr, c2SumErr;
+    STREAM_TYPE a1AvgErr, a2AvgErr, b1AvgErr, b2AvgErr, c1AvgErr, c2AvgErr;
+    double epsilon;
+    ssize_t j;
+    int k;
+
+    /* reproduce initialization */
+    a1j = A1_TUNED;
+    a2j = A2_TUNED;
+
+    b1j = B1_TUNED;
+    b2j = B2_TUNED;
+
+    c1j = C1_TUNED;
+    c2j = C2_TUNED;
+    /* a1[] is modified during timing check */
+    a1j = 2.0E0 * a1j;
+    /* now execute timing loop */
+    scalar = 3.0;
+    for (k = 0; k < ntimes; k++) {
+        // i. copy node1-to-node2. (read a1, write b2)
+        b2j = a1j;
+        // ii. scale node2-to-node1 (read b2, write a1)
+        a1j = scalar * b2j;
+        // iii. add node1-to-node2 (read a1, b1, write c2)
+        c2j = a1j + b1j;
+        // iv. triad node2-to-node1 (read b2, c2, write a1)
+        a1j = b2j + scalar * c2j;
+        // v. copy node2-to-node1 (read a2, write b1)
+        b1j = a2j;
+        // vi. scale node1-to-node2 (read b1, write a2)
+        a2j = scalar * b1j;
+        // vii. add node2-to-node1 (read a2, b2, write c1)
+        c1j = a2j + b2j;
+        // viii. triad node1-to-node2 (read b1, c1, write a2)
+        a2j = b1j + scalar * c1j;
+    }
+
+    /* accumulate deltas between observed and expected results */
+    a1SumErr = 0.0;
+    a2SumErr = 0.0;
+
+    b1SumErr = 0.0;
+    b2SumErr = 0.0;
+
+    c1SumErr = 0.0;
+    c2SumErr = 0.0;
+    for (j = 0; j < stream_array_size; j++) {
+        a1SumErr += abs(a1[j] - a1j);
+        a2SumErr += abs(a2[j] - a2j);
+
+        b1SumErr += abs(b1[j] - b1j);
+        b2SumErr += abs(b2[j] - b2j);
+
+        c1SumErr += abs(c1[j] - c1j);
+        c2SumErr += abs(c2[j] - c2j);
+        // if (j == 417) printf("Index 417: c[j]: %f, cj: %f\n",c[j],cj);	//
+        // MCCALPIN
+    }
+    a1AvgErr = a1SumErr / (STREAM_TYPE)stream_array_size;
+    a2AvgErr = a2SumErr / (STREAM_TYPE)stream_array_size;
+
+    b1AvgErr = b1SumErr / (STREAM_TYPE)stream_array_size;
+    b2AvgErr = b2SumErr / (STREAM_TYPE)stream_array_size;
+
+    c1AvgErr = c1SumErr / (STREAM_TYPE)stream_array_size;
+    c2AvgErr = c2SumErr / (STREAM_TYPE)stream_array_size;
+
+    if (sizeof(STREAM_TYPE) == 4) {
+        epsilon = 1.e-6;
+    } else if (sizeof(STREAM_TYPE) == 8) {
+        epsilon = 1.e-13;
+    } else {
+        printf("WEIRD: sizeof(STREAM_TYPE) = %lu\n", sizeof(STREAM_TYPE));
+        epsilon = 1.e-6;
+    }
+
+    int err = 0;
+    int ierr = 0;
+    upperbound_errors(&err, &ierr, epsilon, a1, a1j, a1AvgErr, "a1");
+    upperbound_errors(&err, &ierr, epsilon, a2, a2j, a2AvgErr, "a2");
+
+    upperbound_errors(&err, &ierr, epsilon, b1, b1j, b1AvgErr, "b1");
+    upperbound_errors(&err, &ierr, epsilon, b2, b2j, b2AvgErr, "b2");
+
+    upperbound_errors(&err, &ierr, epsilon, c1, c1j, c1AvgErr, "c1");
+    upperbound_errors(&err, &ierr, epsilon, c2, c2j, c2AvgErr, "c2");
+
+    if (err == 0) {
+        printf("Solution Validates: avg error less than %e on all three arrays\n",
+               epsilon);
+    }
+
+#ifdef VERBOSE
+    printf("Results Validation Verbose Results: \n");
+    printf("    Expected a1(1), a2(1), b1(1), b2(1), c1(1), c2(1): %f %f %f %f %f %f \n",
+           a1j, a2j, b1j, b2j, c1j, c2j);
+    printf("    Observed a1(1), a2(1), b1(1), b2(1), c1(1), c2(1): %f %f %f %f %f %f \n",
+           a1[1], a2[1], b1[1], b2[1], c1[1], c2[1]);
+    printf("    Rel Errors on a1, a2, b1, b2, c1, c2:     %e %e %e \n",
+           abs(a1AvgErr / a1j), abs(a2AvgErr / a2j), abs(b1AvgErr / b1j),
+           abs(b2AvgErr / b2j), abs(c1AvgErr / c1j), abs(c2AvgErr / c2j));
+#endif
+}
+
+#ifdef TUNED
+/* stubs for "tuned" versions of the kernels */
+void tuned_STREAM_Copy(STREAM_TYPE *x, STREAM_TYPE *y) {
+    ssize_t j;
+#pragma omp parallel for
+    for (j = 0; j < stream_array_size; j++)
+        x[j] = y[j];
+}
+
+void tuned_STREAM_Scale(STREAM_TYPE scalar, STREAM_TYPE *x, STREAM_TYPE *y) {
+    ssize_t j;
+#pragma omp parallel for
+    for (j = 0; j < stream_array_size; j++)
+        x[j] = scalar * y[j];
+}
+
+void tuned_STREAM_Add(STREAM_TYPE *x, STREAM_TYPE *y, STREAM_TYPE *z) {
+    ssize_t j;
+#pragma omp parallel for
+    for (j = 0; j < stream_array_size; j++)
+        x[j] = y[j] + z[j];
+}
+
+void tuned_STREAM_Triad(STREAM_TYPE scalar, STREAM_TYPE *x, STREAM_TYPE *y,
+                        STREAM_TYPE *z) {
+    ssize_t j;
+
+#pragma omp parallel for
+    for (j = 0; j < stream_array_size; j++)
+        x[j] = y[j] + scalar * z[j];
+}
+/* end of stubs for the "tuned" versions of the kernels */
+#endif
+
 int main(int argc, char **argv) {
     size_t numa_nodes[2] = {-1, -1};
 
     parse_cli_args(argc, argv, numa_nodes);
 
-    int quantum, checktick();
+    int quantum; // , checktick();
     int BytesPerWord;
     int k;
     ssize_t j;
@@ -221,19 +595,31 @@ int main(int argc, char **argv) {
 
     numa_set_strict(1);
 
-    a1 = numa_alloc_onnode(numa_node_size, from_node);
-    a2 = numa_alloc_onnode(numa_node_size, to_node);
+    if (use_malloc) {
+        a1 = (STREAM_TYPE *)malloc(numa_node_size);
+        a2 = (STREAM_TYPE *)malloc(numa_node_size);
 
-    b1 = numa_alloc_onnode(numa_node_size, from_node);
-    b2 = numa_alloc_onnode(numa_node_size, to_node);
+        b1 = (STREAM_TYPE *)malloc(numa_node_size);
+        b2 = (STREAM_TYPE *)malloc(numa_node_size);
 
-    c1 = numa_alloc_onnode(numa_node_size, from_node);
-    c2 = numa_alloc_onnode(numa_node_size, to_node);
+        c1 = (STREAM_TYPE *)malloc(numa_node_size);
+        c2 = (STREAM_TYPE *)malloc(numa_node_size);
+    } else {
+        a1 = (STREAM_TYPE *)numa_alloc_onnode(numa_node_size, from_node);
+        a2 = (STREAM_TYPE *)numa_alloc_onnode(numa_node_size, to_node);
+
+        b1 = (STREAM_TYPE *)numa_alloc_onnode(numa_node_size, from_node);
+        b2 = (STREAM_TYPE *)numa_alloc_onnode(numa_node_size, to_node);
+
+        c1 = (STREAM_TYPE *)numa_alloc_onnode(numa_node_size, from_node);
+        c2 = (STREAM_TYPE *)numa_alloc_onnode(numa_node_size, to_node);
+    }
 
     if (!a1 || !a2 || !b1 || !b2 || !c1 || !c2) {
-        printf("ERROR: numa_alloc_onnode failed to allocate memory on desired node. "
+        printf("ERROR: failed to allocate memory.  Reduce the array sizes and retry"
                "Aborting.\n");
-        abort();
+        output_help();
+        exit(1);
     }
 
     /* --- SETUP --- determine precision and check timing --- */
@@ -439,13 +825,13 @@ int main(int argc, char **argv) {
 
     int REPORT_LEN = TIMES_LEN;
     if (numa_nodes[0] == numa_nodes[1]) {
-        /* A single NUMA node is tested, make sure that the 
+        /* A single NUMA node is tested, make sure that the
          * report considers this fact to consolidate the best
          */
-        REPORT_LEN = TIMES_LEN/2;
+        REPORT_LEN = TIMES_LEN / 2;
         for (k = 1; k < REPORT_LEN; k++) {
-            mintime[k] = MIN(mintime[k], mintime[k+REPORT_LEN]);
-            maxtime[k] = MAX(maxtime[k], maxtime[k+REPORT_LEN]);
+            mintime[k] = MIN(mintime[k], mintime[k + REPORT_LEN]);
+            maxtime[k] = MAX(maxtime[k], maxtime[k + REPORT_LEN]);
         }
     }
 
@@ -472,365 +858,25 @@ int main(int argc, char **argv) {
 
     /* --- Cleaning Up --- */
 
-    numa_free(a1, numa_node_size);
-    numa_free(a2, numa_node_size);
+    if (use_malloc) {
+        free(a1);
+        free(a2);
 
-    numa_free(b1, numa_node_size);
-    numa_free(b2, numa_node_size);
+        free(b1);
+        free(b2);
 
-    numa_free(c1, numa_node_size);
-    numa_free(c2, numa_node_size);
+        free(c1);
+        free(c2);
+    } else {
+        numa_free(a1, numa_node_size);
+        numa_free(a2, numa_node_size);
+
+        numa_free(b1, numa_node_size);
+        numa_free(b2, numa_node_size);
+
+        numa_free(c1, numa_node_size);
+        numa_free(c2, numa_node_size);
+    }
 
     return 0;
 }
-
-static const int HELP_LEN = 6;
-static char *HELP[] = {
-    "         --ntimes, -t <integer-value>                         : Number of times to "
-    "run benchmark: Default 10",
-    "     --array-size, -a <integer-value>|<integer-value><K|M|G>  : Size of numa node "
-    "arrays: Default 1000000",
-    "         --offset, -o <integer-value>                         : Change relative "
-    "alignment of arrays: Default 0",
-    "     --numa-nodes, -n <integer>,<integer>|<integer>           : [Required] Numa "
-    "node(s) to do calculations on",
-    "--auto-array-size, -s                                         : Array will be "
-    "socket's L3 cache divided by 2",
-    "           --help, -h                                         : Print this message"};
-
-static struct option long_options[6] = {
-    {"ntimes", optional_argument, 0, 't'},    {"array-size", optional_argument, 0, 'a'},
-    {"offset", optional_argument, 0, 'o'},    {"numa-nodes", required_argument, 0, 'n'},
-    {"auto-array-size", no_argument, 0, 's'}, {"help", no_argument, 0, 'h'}};
-
-void parse_numa_from_cli(uint64_t *numa_nodes, char *arg) {
-    if (strchr(arg, ',') == NULL) {
-        numa_nodes[0] = numa_nodes[1] = atoll(arg);
-    } else {
-        char *s1 = strdup(arg);
-        char *s0 = strsep(&s1, ",");
-
-        numa_nodes[0] = atoll(s0);
-        numa_nodes[1] = atoll(s1);
-
-        free(s0);
-    }
-}
-
-void output_help() {
-    printf("STREAM Benchmark\n");
-    for (int i = 0; i < HELP_LEN; i++) {
-        printf("%s\n", HELP[i]);
-    }
-
-    exit(EXIT_SUCCESS);
-}
-
-uint64_t calculate_array_size() {
-    // `_SC_LEVEL3_CACHE_SIZE` is used instead of sysfs's `size` for more precision.
-    uint64_t size = sysconf(_SC_LEVEL3_CACHE_SIZE) / 2;
-
-    return size;
-}
-
-uint64_t *parse_cli_args(int argc, char **argv, uint64_t *numa_nodes) {
-    int c;
-    int found_numa = 0;
-
-    while (1) {
-        int option_index = 0;
-
-        c = getopt_long(argc, argv, "t:a:o:n:s:h", long_options, &option_index);
-
-        if (c == -1) {
-            break;
-        }
-
-        if (long_options[option_index].flag != 0) {
-            break;
-        }
-
-        // Optional arguments take this, while required arguments take `optarg`
-        char *arg = argv[optind];
-
-        switch (c) {
-        case 't':
-            if (arg)
-                ntimes = atoi(arg);
-            break;
-        case 'a':
-            if (arg)
-                stream_array_size = convert_array_size(arg);
-            break;
-        case 'o':
-            if (arg)
-                offset = atoi(arg);
-            break;
-        case 'n':
-            if (optarg) {
-                parse_numa_from_cli(numa_nodes, optarg);
-
-                found_numa = 1;
-            }
-            break;
-        case 's':
-            stream_array_size = calculate_array_size();
-            break;
-        case 'h':
-            output_help();
-            break;
-        default:
-            break;
-        }
-    }
-
-    if (!found_numa) {
-        printf("No numa nodes inputted. Aborting.\n");
-        abort();
-    }
-
-    return numa_nodes;
-}
-
-uint64_t convert_array_size(char *s) {
-    char last_char = s[strlen(s) - 1];
-
-    if (isdigit(last_char)) {
-        return atoll(s);
-    }
-
-    uint64_t last_digit_index = strlen(s) - 1;
-    char *s0 = strndup(s, last_digit_index);
-
-    uint64_t base = atoll(s0);
-
-    switch (last_char) {
-    case 'K':
-        base *= 1000;
-        break;
-    case 'M':
-        base *= 1e6; // 1 million
-        break;
-    case 'G':
-        base *= 1e9; // 1 billion
-        break;
-    default:
-        break;
-    }
-
-    free(s0);
-
-    return base;
-}
-
-#define M 20
-
-int checktick() {
-    int i, minDelta, Delta;
-    double t1, t2, timesfound[M];
-
-    /*  Collect a sequence of M unique time values from the system. */
-
-    for (i = 0; i < M; i++) {
-        t1 = mysecond();
-        while (((t2 = mysecond()) - t1) < 1.0E-6)
-            ;
-        timesfound[i] = t1 = t2;
-    }
-
-    /*
-     * Determine the minimum difference between these M values.
-     * This result will be our estimate (in microseconds) for the
-     * clock granularity.
-     */
-
-    minDelta = 1000000;
-    for (i = 1; i < M; i++) {
-        Delta = (int)(1.0E6 * (timesfound[i] - timesfound[i - 1]));
-        minDelta = MIN(minDelta, MAX(Delta, 0));
-    }
-
-    return (minDelta);
-}
-
-/* A gettimeofday routine to give access to the wall
-   clock timer on most UNIX-like systems.  */
-
-#include <sys/time.h>
-
-double mysecond() {
-    struct timeval tp;
-    struct timezone tzp;
-
-    gettimeofday(&tp, &tzp);
-    return ((double)tp.tv_sec + (double)tp.tv_usec * 1.e-6);
-}
-
-void upperbound_errors(int *err, int *ierr, double epsilon, STREAM_TYPE *x,
-                       STREAM_TYPE xj, STREAM_TYPE x_avg_err, char *x_array_name) {
-    if (abs(x_avg_err / xj) > epsilon) {
-        (*err)++;
-        printf("Failed Validation on array %s, AvgRelAbsErr > epsilon (%e)\n",
-               x_array_name, epsilon);
-        printf("     Expected Value: %e, AvgAbsErr: %e, AvgRelAbsErr: %e\n", xj,
-               x_avg_err, abs(x_avg_err) / xj);
-        *ierr = 0;
-        for (ssize_t j = 0; j < stream_array_size; j++) {
-            if (abs(x[j] / xj - 1.0) > epsilon) {
-                (*ierr)++;
-#ifdef VERBOSE
-                if (ierr < 10) {
-                    printf("         array %s: index: %ld, expected: %e, observed: %e, "
-                           "relative error: %e\n",
-                           x_array_name, j, xj, x[j], abs((xj - x[j]) / x_avg_err));
-                }
-#endif
-            }
-        }
-        printf("     For array %s[], %d errors were found.\n", x_array_name, *ierr);
-    }
-}
-
-#ifndef abs
-#define abs(a) ((a) >= 0 ? (a) : -(a))
-#endif
-void checkSTREAMresults() {
-    STREAM_TYPE a1j, a2j, b1j, b2j, c1j, c2j, scalar;
-    STREAM_TYPE a1SumErr, a2SumErr, b1SumErr, b2SumErr, c1SumErr, c2SumErr;
-    STREAM_TYPE a1AvgErr, a2AvgErr, b1AvgErr, b2AvgErr, c1AvgErr, c2AvgErr;
-    double epsilon;
-    ssize_t j;
-    int k;
-
-    /* reproduce initialization */
-    a1j = A1_TUNED;
-    a2j = A2_TUNED;
-
-    b1j = B1_TUNED;
-    b2j = B2_TUNED;
-
-    c1j = C1_TUNED;
-    c2j = C2_TUNED;
-    /* a1[] is modified during timing check */
-    a1j = 2.0E0 * a1j;
-    /* now execute timing loop */
-    scalar = 3.0;
-    for (k = 0; k < ntimes; k++) {
-        // i. copy node1-to-node2. (read a1, write b2)
-        b2j = a1j;
-        // ii. scale node2-to-node1 (read b2, write a1)
-        a1j = scalar * b2j;
-        // iii. add node1-to-node2 (read a1, b1, write c2)
-        c2j = a1j + b1j;
-        // iv. triad node2-to-node1 (read b2, c2, write a1)
-        a1j = b2j + scalar * c2j;
-        // v. copy node2-to-node1 (read a2, write b1)
-        b1j = a2j;
-        // vi. scale node1-to-node2 (read b1, write a2)
-        a2j = scalar * b1j;
-        // vii. add node2-to-node1 (read a2, b2, write c1)
-        c1j = a2j + b2j;
-        // viii. triad node1-to-node2 (read b1, c1, write a2)
-        a2j = b1j + scalar * c1j;
-    }
-
-    /* accumulate deltas between observed and expected results */
-    a1SumErr = 0.0;
-    a2SumErr = 0.0;
-
-    b1SumErr = 0.0;
-    b2SumErr = 0.0;
-
-    c1SumErr = 0.0;
-    c2SumErr = 0.0;
-    for (j = 0; j < stream_array_size; j++) {
-        a1SumErr += abs(a1[j] - a1j);
-        a2SumErr += abs(a2[j] - a2j);
-
-        b1SumErr += abs(b1[j] - b1j);
-        b2SumErr += abs(b2[j] - b2j);
-
-        c1SumErr += abs(c1[j] - c1j);
-        c2SumErr += abs(c2[j] - c2j);
-        // if (j == 417) printf("Index 417: c[j]: %f, cj: %f\n",c[j],cj);	//
-        // MCCALPIN
-    }
-    a1AvgErr = a1SumErr / (STREAM_TYPE)stream_array_size;
-    a2AvgErr = a2SumErr / (STREAM_TYPE)stream_array_size;
-
-    b1AvgErr = b1SumErr / (STREAM_TYPE)stream_array_size;
-    b2AvgErr = b2SumErr / (STREAM_TYPE)stream_array_size;
-
-    c1AvgErr = c1SumErr / (STREAM_TYPE)stream_array_size;
-    c2AvgErr = c2SumErr / (STREAM_TYPE)stream_array_size;
-
-    if (sizeof(STREAM_TYPE) == 4) {
-        epsilon = 1.e-6;
-    } else if (sizeof(STREAM_TYPE) == 8) {
-        epsilon = 1.e-13;
-    } else {
-        printf("WEIRD: sizeof(STREAM_TYPE) = %lu\n", sizeof(STREAM_TYPE));
-        epsilon = 1.e-6;
-    }
-
-    int err = 0;
-    int ierr = 0;
-    upperbound_errors(&err, &ierr, epsilon, a1, a1j, a1AvgErr, "a1");
-    upperbound_errors(&err, &ierr, epsilon, a2, a2j, a2AvgErr, "a2");
-
-    upperbound_errors(&err, &ierr, epsilon, b1, b1j, b1AvgErr, "b1");
-    upperbound_errors(&err, &ierr, epsilon, b2, b2j, b2AvgErr, "b2");
-
-    upperbound_errors(&err, &ierr, epsilon, c1, c1j, c1AvgErr, "c1");
-    upperbound_errors(&err, &ierr, epsilon, c2, c2j, c2AvgErr, "c2");
-
-    if (err == 0) {
-        printf("Solution Validates: avg error less than %e on all three arrays\n",
-               epsilon);
-    }
-
-#ifdef VERBOSE
-    printf("Results Validation Verbose Results: \n");
-    printf("    Expected a1(1), a2(1), b1(1), b2(1), c1(1), c2(1): %f %f %f %f %f %f \n",
-           a1j, a2j, b1j, b2j, c1j, c2j);
-    printf("    Observed a1(1), a2(1), b1(1), b2(1), c1(1), c2(1): %f %f %f %f %f %f \n",
-           a1[1], a2[1], b1[1], b2[1], c1[1], c2[1]);
-    printf("    Rel Errors on a1, a2, b1, b2, c1, c2:     %e %e %e \n",
-           abs(a1AvgErr / a1j), abs(a2AvgErr / a2j), abs(b1AvgErr / b1j),
-           abs(b2AvgErr / b2j), abs(c1AvgErr / c1j), abs(c2AvgErr / c2j));
-#endif
-}
-
-#ifdef TUNED
-/* stubs for "tuned" versions of the kernels */
-void tuned_STREAM_Copy(STREAM_TYPE *x, STREAM_TYPE *y) {
-    ssize_t j;
-#pragma omp parallel for
-    for (j = 0; j < stream_array_size; j++)
-        x[j] = y[j];
-}
-
-void tuned_STREAM_Scale(STREAM_TYPE scalar, STREAM_TYPE *x, STREAM_TYPE *y) {
-    ssize_t j;
-#pragma omp parallel for
-    for (j = 0; j < stream_array_size; j++)
-        x[j] = scalar * y[j];
-}
-
-void tuned_STREAM_Add(STREAM_TYPE *x, STREAM_TYPE *y, STREAM_TYPE *z) {
-    ssize_t j;
-#pragma omp parallel for
-    for (j = 0; j < stream_array_size; j++)
-        x[j] = y[j] + z[j];
-}
-
-void tuned_STREAM_Triad(STREAM_TYPE scalar, STREAM_TYPE *x, STREAM_TYPE *y,
-                        STREAM_TYPE *z) {
-    ssize_t j;
-
-#pragma omp parallel for
-    for (j = 0; j < stream_array_size; j++)
-        x[j] = y[j] + scalar * z[j];
-}
-/* end of stubs for the "tuned" versions of the kernels */
-#endif
