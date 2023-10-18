@@ -335,6 +335,7 @@ static uint64_t *parse_cli_args(int argc, char **argv, uint64_t *numa_nodes) {
             break;
         case 'm':
             use_malloc = true;
+            break;
         default:
             printf("unrecognized option\n");
             output_help();
