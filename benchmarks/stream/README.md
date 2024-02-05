@@ -20,12 +20,13 @@ The `numactl` command and `numa.h` header are required for this benchmark to run
 ```bash
 $ ./stream_c.exe --help
 STREAM Benchmark
-         --ntimes, -t <integer-value>                         : Number of times to run benchmark: Default 10
+     --ntimes, -t <integer-value>                             : Number of times to run benchmark: Default 10
      --array-size, -a <integer-value>|<integer-value><K|M|G>  : Size of numa node arrays: Default 1000000
-         --offset, -o <integer-value>                         : Change relative alignment of arrays: Default 0
-     --numa-nodes, -n <integer>,<integer>|<integer>           : [Required] Numa node(s) to do calculations on
---auto-array-size, -s                                         : Array will be socket's L3 cache divided by 2
-           --help, -h                                         : Print this message
+     --offset, -o <integer-value>                             : Change relative alignment of arrays: Default 0
+     --numa-nodes, -n <integer>,<integer>|<integer>           : Numa node(s) to do calculations on
+     --malloc                                                 : Use malloc rather than node alloc 
+     --auto-array-size, -s                                    : Array will be socket's L3 cache divided by 2
+     --help, -h                                               : Print this message
 ```
 
 ### Memory combinations
@@ -47,6 +48,11 @@ The nodes with CPUs are DRAM (node0, node1), while the one without any CPUs (nod
 ```bash
 $ numactl --cpunodebind=0 --membind=0,1 ./stream_c.exe --numa-nodes 0,1 --auto-array-size
 ```
+
+or
+```bash
+$ numactl --cpunodebind=0 --membind=0 ./stream_c.exe --malloc --array-size 400M --ntimes 100
+``` 
 
 #### CXL Only
 
