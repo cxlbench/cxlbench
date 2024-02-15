@@ -597,7 +597,7 @@ int main(int argc, char **argv) {
                        3 * sizeof(STREAM_TYPE) * stream_array_size};
 
     int from_node = numa_nodes[0];
-    int to_node = numa_nodes[0];
+    int to_node = numa_nodes[1];
 
     uint64_t numa_node_size = (stream_array_size + offset) * sizeof(STREAM_TYPE);
 
