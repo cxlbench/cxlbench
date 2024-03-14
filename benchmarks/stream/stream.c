@@ -171,8 +171,7 @@ static double avgtime[8] = {0}, maxtime[8] = {0},
 
 static char *label[4] = {"Copy:      ", "Scale:     ", "Add:       ", "Triad:     "};
 
-static const STREAM_TYPE A1_TUNED = 1.0, A2_TUNED = 1.0, B1_TUNED = 2.0, B2_TUNED = 2.0,
-                         C1_TUNED = 0.0, C2_TUNED = 0.0;
+static const STREAM_TYPE A_TUNED = 1.0, B_TUNED = 2.0, C_TUNED = 0.0;
 
 static const int TIMES_LEN = 8;
 static bool use_malloc = false;
@@ -189,9 +188,9 @@ extern int omp_get_num_threads();
 #endif
 
 static struct option long_options[8] = {
-    {"ntimes", optional_argument, 0, 't'},
-    {"array-size", optional_argument, 0, 'a'},
-    {"offset", optional_argument, 0, 'o'},
+    {"ntimes", required_argument, 0, 't'},
+    {"array-size", required_argument, 0, 'a'},
+    {"offset", required_argument, 0, 'o'},
     {"numa-nodes", required_argument, 0, 'n'},
     {"auto-array-size", no_argument, 0, 's'},
     {"help", no_argument, 0, 'h'},
@@ -225,7 +224,7 @@ static char *HELP[] = {
     "node(s) to allocate the arrays using numa_alloc_onnode",
     "     --auto-array-size, -s                                    : Array will be "
     "socket's L3 cache divided by 2",
-    "      --malloc, -m                                            : Use normal malloc to allocate "
+    "     --malloc, -m                                             : Use normal malloc to allocate "
     "the arrays",
     "     --help, -h                                               : Print this message"
 };
@@ -298,23 +297,35 @@ static uint64_t *parse_cli_args(int argc, char **argv, uint64_t *numa_nodes) {
             break;
         }
 
-        // Optional arguments take this, while required arguments take `optarg`
-        char *arg = argv[optind];
-
         switch (c) {
         case 't':
-            if (arg) {
-                ntimes = atoi(arg);
+            if (optarg) {
+                ntimes = atoi(optarg);
+            }
+            else {
+                printf("-t requires a value");
+                output_help();
+                exit(1);
             }
             break;
         case 'a':
-            if (arg) {
-                stream_array_size = convert_array_size(arg);
+            if (optarg) {
+                stream_array_size = convert_array_size(optarg);
+            }
+            else {
+                printf("-a requires a value");
+                output_help();
+                exit(1);
             }
             break;
         case 'o':
-            if (arg) {
-                offset = atoi(arg);
+            if (optarg) {
+                offset = atoi(optarg);
+            }
+            else {
+                printf("-0 requires a value");
+                output_help();
+                exit(1);
             }
             break;
         case 'n':
@@ -406,9 +417,9 @@ double mysecond() {
     return ((double)tp.tv_sec + (double)tp.tv_usec * 1.e-6);
 }
 
-static void upperbound_errors(int *err, int *ierr, double epsilon, STREAM_TYPE *x,
+static void upperbound_errors(uint64_t *err, uint64_t *ierr, double epsilon, STREAM_TYPE *x,
                               STREAM_TYPE xj, STREAM_TYPE x_avg_err, char *x_array_name) {
-    if (abs(x_avg_err / xj) > epsilon) {
+    if (llabs(x_avg_err / xj) > epsilon) {
         (*err)++;
         printf("Failed Validation on array %s, AvgRelAbsErr > epsilon (%e)\n",
                x_array_name, epsilon);
@@ -427,7 +438,7 @@ static void upperbound_errors(int *err, int *ierr, double epsilon, STREAM_TYPE *
 #endif
             }
         }
-        printf("     For array %s[], %d errors were found.\n", x_array_name, *ierr);
+        printf("     For array %s[], %ld errors were found.\n", x_array_name, *ierr);
     }
 }
 
@@ -443,16 +454,13 @@ static void checkSTREAMresults() {
     int k;
 
     /* reproduce initialization */
-    a1j = A1_TUNED;
-    a2j = A2_TUNED;
+    a1j = a2j = A_TUNED;
+    b1j = b2j = B_TUNED;
+    c1j = c2j = C_TUNED;
 
-    b1j = B1_TUNED;
-    b2j = B2_TUNED;
-
-    c1j = C1_TUNED;
-    c2j = C2_TUNED;
     /* a1[] is modified during timing check */
     a1j = 2.0E0 * a1j;
+    a2j = 2.0E0 * a2j;
     /* now execute timing loop */
     scalar = 3.0;
     for (k = 0; k < ntimes; k++) {
@@ -513,8 +521,8 @@ static void checkSTREAMresults() {
         epsilon = 1.e-6;
     }
 
-    int err = 0;
-    int ierr = 0;
+    uint64_t err = 0;
+    uint64_t ierr = 0;
     upperbound_errors(&err, &ierr, epsilon, a1, a1j, a1AvgErr, "a1");
     upperbound_errors(&err, &ierr, epsilon, a2, a2j, a2AvgErr, "a2");
 
@@ -685,14 +693,9 @@ int main(int argc, char **argv) {
     /* Get initial value for system clock. */
 #pragma omp parallel for
     for (j = 0; j < stream_array_size; j++) {
-        a1[j] = A1_TUNED;
-        a2[j] = A2_TUNED;
-
-        b1[j] = B1_TUNED;
-        b2[j] = B2_TUNED;
-
-        c1[j] = C1_TUNED;
-        c2[j] = C2_TUNED;
+        a1[j] = a2[j] = A_TUNED;
+        b1[j] = b2[j] = B_TUNED;
+        c1[j] = c2[j] = C_TUNED;
     }
 
     printf(HLINE);
