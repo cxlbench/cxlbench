@@ -29,7 +29,7 @@ NETWORK_NAME=mysqlsysbench
 CLIENT_CPU_LIMIT=4              # Number of vCPUs to give to the Sysbench container
 CLIENT_MEMORY_LIMIT=1g          # Amount of memory (GiB) to give to the Sysbench container
 SERVER_CPU_LIMIT=4              # Number of vCPUs to give to the MySQL container
-SERVER_MEMORY_LIMIT=16g         # Amount of memory (GiB) to give to the Sysbench container
+SERVER_MEMORY_LIMIT=16g         # Amount of memory (GiB) to give to the MySQL container
 PM_INSTANCES=1                  # Number of podman instances to start
 
 # === MySQL Variables ===
