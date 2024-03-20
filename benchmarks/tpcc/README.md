@@ -105,6 +105,27 @@ cpuset cpu memory pids
 
 If the above doesn't work the first time, log out of all sessions for that user and login again. Alternatively, reboot the host.
 
+### Podman Errors
+
+If you see the following error
+```
+Error validating CNI config file /home/<username>/.config/cni/net.d/mysqlsysbench.conflist: [plugin bridge does not support config version \"1.0.0\" plugin portmap does not support config version \"1.0.0\" plugin firewall does not support config version \"1.0.0\" plugin tuning does not support config version \"1.0.0\"]
+```
+
+You must fix the CNI config files via the following method
+
+```
+bash
+$ podman network ls
+NETWORK ID    NAME           VERSION     PLUGINS
+2f259bab93aa  podman         0.4.0       bridge,portmap,firewall,tuning
+0c75ec5d56ea  mysqlsysbench  1.0.0       bridge,portmap,firewall,tuning,dnsname
+
+$ vi ~/.config/cnd/net.d/mysqlsysbench.conflist
+// Change the line "cniVersion": "1.0.0" to
+"cniVersion":  "0.4.0"
+```
+
 
 #
 
@@ -124,7 +145,7 @@ NETWORK_NAME=mysqlsysbench
 CLIENT_CPU_LIMIT=4  								# Number of vCPUs to give to the Sysbench container
 CLIENT_MEMORY_LIMIT=1g  							# Amount of memory (GiB) to give to the Sysbench container
 SERVER_CPU_LIMIT=4  								# Number of vCPUs to give to the MySQL container
-SERVER_MEMORY_LIMIT=16g  							# Amount of memory (GiB) to give to the Sysbench container
+SERVER_MEMORY_LIMIT=16g  							# Amount of memory (GiB) to give to the MySQL container
 
 # === MySQL Variables ===
 MYSQL_ROOT_PASSWORD=my-secret-pw  					# Root Users Password
