@@ -663,7 +663,7 @@ function bandwidth_ramp() {
         # Extract the Latency and Bandwidth results from the log file
         LatencyResult=$(tail -n 4 "${LOG_FILE}" | ${GREP} '00000' | awk '{print $2}')
         BandwidthResult=$(tail -n 4 "${LOG_FILE}" | ${GREP} '00000' | awk '{print $3}')
-        echo "DRAM:CXL,${ratiostr},${MEM_NUMA_NODE},${c},${rdwr},${access},${LatencyResult},${BandwidthResult}" >> "${OUTPUT_PATH}/bw_ramp.results.node_${MEM_NUMA_NODE}.${rdwr}.${access}.${ratiostr}.csv"
+        echo "DRAM:CXL,\"${ratiostr}\",${MEM_NUMA_NODE},${c},${rdwr},${access},${LatencyResult},${BandwidthResult}" >> "${OUTPUT_PATH}/bw_ramp.results.node_${MEM_NUMA_NODE}.${rdwr}.${access}.${ratiostr}.csv"
       done
     done
   done
@@ -722,7 +722,7 @@ function bandwidth_ramp_interleave() {
           LatencyResult=$(tail -n 4 "${LOG_FILE}" | ${GREP} '00000' | awk '{print $2}')
           BandwidthResult=$(tail -n 4 "${LOG_FILE}" | ${GREP} '00000' | awk '{print $3}')
           ratiostr="$(( 100 - ratio )):${ratio}"
-          echo "DRAM:CXL,${ratiostr},${c},${rdwr},${access},${LatencyResult},${BandwidthResult}" >> "${OUTPUT_PATH}/bw_ramp_interleave.results.node_${DRAM_NUMA_NODE}.node_${CXL_NUMA_NODE}.${rdwr}.${access}.${ratio}.csv"
+          echo "DRAM:CXL,\"${ratiostr}\",${c},${rdwr},${access},${LatencyResult},${BandwidthResult}" >> "${OUTPUT_PATH}/bw_ramp_interleave.results.node_${DRAM_NUMA_NODE}.node_${CXL_NUMA_NODE}.${rdwr}.${access}.${ratio}.csv"
         done 
       done
     done
