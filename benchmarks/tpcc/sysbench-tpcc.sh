@@ -118,33 +118,39 @@ function print_usage()
 {
     echo -e "${SCRIPT_NAME}: Usage"
     echo "    ${SCRIPT_NAME} OPTIONS"
-    echo "      -c                                          : Cleanup. Completely remove all containers and the MySQL database"
-    echo "      -C <numa_node>                              : [Required] CPU NUMA Node to run the MySQLServer"
+    echo " [Experiment options]"
     echo "      -e dram|cxl|numainterleave|numapreferred|   : [Required] Memory environment"
     echo "         kerneltpp"
     echo "      -i <number_of_instances>                    : The number of container intances to execute: Default 1"
-    echo "      -r                                          : Run the Sysbench workload"
-    echo "      -p                                          : Prepare the database"
-    echo "      -M <numa_node,..>                           : [Required] Memory NUMA Node to run the MySQLServer"
     echo "      -o <prefix>                                 : [Required] prefix of the output files: Default 'test'"
     echo "      -s <scale>                                  : Number of warehouses (scale): Default 10"
-    echo "      -S <numa_node>                              : [Required] CPU NUMA Node to run the Sysbench workers"
     echo "      -t <number_of_tables>                       : The number of tables per warehouse: Default 10"
     echo "      -T <run time>                               : Number of seconds to 'run' the benchmark. Default ${SYSBENCH_RUNTIME}"
-    echo "      -w                                          : Warm the database. Default False."
     echo "      -W <worker threads>                         : Maximum number of Sysbench worker threads. Default 1"
+
+    echo " [Run options]"
+    echo "      -c                                          : Cleanup. Completely remove all containers and the MySQL database"
+    echo "      -p                                          : Prepare the database"
+    echo "      -w                                          : Warm the database. Default False."
+    echo "      -r                                          : Run the Sysbench workload"
+
+    echo " [Machine confiuration options]"
+    echo "      -C <numa_node>                              : [Required] CPU NUMA Node to run the MySQLServer"
+    echo "      -M <numa_node,..>                           : [Required] Memory NUMA Node to run the MySQLServer"
+    echo "      -S <numa_node>                              : [Required] CPU NUMA Node to run the Sysbench workers"
+
     echo "      -h                                          : Print this message"
     echo " "
     echo "Example 1: Runs a single MySQL server on NUMA 0 and a single SysBench instance on NUMA Node1, "
     echo "  prepares the database, runs the benchmark from 1..1000 threads in powers of two, "
     echo "  and removes the database and containers when complete."
     echo " "
-    echo "    $ ./${SCRIPT_NAME} -c -C 0 -e dram -i 1 -r -p -M 0 -o test -S1 -t 10 -w -W 1000"
+    echo "    $ ./${SCRIPT_NAME} -e dram -o test -i 1 -t 10 -W 1000  -C 0 -M 0 -S 1 -p -w -r -c"
     echo " "
     echo "Example 2: Created the MySQL and Sysbench containers, runs the MySQL container on NUMA Node 0, the "
     echo "  Sysbench container on NUMA Node 1, then prepares the database and exits. The containers are left running."
     echo " "
-    echo "    $ ./${SCRIPT_NAME} -C 0 -e dram -M0 -o test -S 1  -p"
+    echo "    $ ./${SCRIPT_NAME} -e dram -o test -C 0 -M 0 -S 1 -p"
     echo " "
 }
 
@@ -1480,9 +1486,6 @@ log_stdout_stderr "${OUTPUT_PATH}"
 display_start_info "$*"
 
 # Define the array of functions to call in the correct order
-# functions=("check_selinux_enforce" "check_mysql_data_dir" "check_cgroups" "create_network" "set_numactl_options" "${OPT_FUNCS_BEFORE}" "create_sysbench_container_image" "start_sysbench_containers" "check_my_cnf_dir_exists" "start_mysql_containers" "pause_for_stability" "create_mysql_databases" "prepare_the_database" "get_mysql_config" "warm_the_database" "run_the_benchmark" "cleanup_database" "get_container_logs" "stop_containers" "remove_containers" "${OPT_FUNCS_AFTER}")
-
-# Define the array of functions to call in the correct order
 functions=("check_selinux_enforce" "check_mysql_data_dir" "check_cgroups" "create_network" "set_numactl_options" "kernel_tpp_feature")
 
 # Add functions from OPT_FUNCS_BEFORE if it is set
@@ -1508,7 +1511,7 @@ for function in "${functions[@]}"; do
     # Check if an error occurred
     if [ $return_value -ne 0 ]; then
         error_msg "An error occurred in '$function'. Exiting."
-        goto out
+        break
     fi
 done
 
