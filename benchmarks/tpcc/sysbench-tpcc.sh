@@ -10,10 +10,10 @@
 # The goal of this script is to show multi-instance performance as we start
 # more DB instances.
 
-source ../../lib/common     # Provides common functions
-source ../../lib/msgfmt     # Provides pretty print messages to STDOUT
-
 SCRIPT_DIR=$( dirname $( readlink -f $0 ))
+source ${SCRIPT_DIR}/../../lib/common     # Provides common functions
+source ${SCRIPT_DIR}/../../lib/msgfmt     # Provides pretty print messages to STDOUT
+
 
 #################################################################################################
 # Variables
