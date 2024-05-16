@@ -10,9 +10,9 @@
 # The goal of this script is to show multi-instance performance as we start
 # more DB instances.
 
-SCRIPT_DIR=$( dirname $( readlink -f $0 ))
-source ${SCRIPT_DIR}/../../lib/common     # Provides common functions
-source ${SCRIPT_DIR}/../../lib/msgfmt     # Provides pretty print messages to STDOUT
+SCRIPTDIR=$( dirname $( readlink -f $0 ))
+source ${SCRIPTDIR}/../../lib/common     # Provides common functions
+source ${SCRIPTDIR}/../../lib/msgfmt     # Provides pretty print messages to STDOUT
 
 
 #################################################################################################
@@ -37,7 +37,7 @@ PM_INSTANCES=1                  # Number of podman instances to start
 MYSQL_ROOT_PASSWORD=my-secret-pw                        # Root Users Password
 MYSQL_START_PORT=3333                                   # Host Port number for the first instance. Additional instances will increment by 1 for each instance 3306..3307..3308..
 MYSQL_DATA_DIR=/data                                    # Base directory for the MySQL Data Directory on the host
-MYSQL_CONF=${SCRIPT_DIR}/my.cnf.d/my.cnf                # Location of the my.cnf file(s)
+MYSQL_CONF=${SCRIPTDIR}/my.cnf.d/my.cnf                 # Location of the my.cnf file(s)
 MySQLDockerImgTag="docker.io/library/mysql:latest"      # MySQL Version. Get the Docker Tag ID from https://hub.docker.com/_/mysql
 
 
@@ -69,6 +69,7 @@ OPT_FUNCS_AFTER=""                    # Optional functions that get called after
 function ctrl_c() {
   info_msg "Received CTRL+C - aborting"
   stop_containers
+  remove_containers
   display_end_info
   exit 1
 }
@@ -192,7 +193,7 @@ function dstat_find_location_of_db()
 function set_numactl_options()
 {
     case "$MEM_ENVIRONMENT" in
-        dram|cxl|mm)
+        dram|cxl|mm|kerneltpp)
             NUMACTL_OPTION="--cpunodebind ${MYSQL_CPU_NUMA_NODE} --membind ${MYSQL_MEM_NUMA_NODE}"
             ;;
         numapreferred)
@@ -1286,8 +1287,8 @@ function kernel_tpp_feature() {
         if [[ $(is_kernel_tpp_enabled) -eq 0 ]] && [[ $EUID -ne 0 ]]; # User is not root, so we can't auto-enable TPP
         then
             error_msg "Please enable Linux Kernel Transparent Page Placement (TPP), then re-run this test. As root, run:"
-            info_msg " $ sudo echo 2 > /proc/sys/kernel/numa_balancing"
-            info_msg " $ sudo echo 1 > /sys/kernel/mm/numa/demotion_enabled"
+            info_msg " $ sudo sh -c \"echo 2 > /proc/sys/kernel/numa_balancing\""
+            info_msg " $ sudo sh -c \"echo 1 > /sys/kernel/mm/numa/demotion_enabled\""
             exit 1
         elif [[ $(is_kernel_tpp_enabled) -eq 0 ]] && [[ $EUID -eq 0 ]]; # User is root
         then
