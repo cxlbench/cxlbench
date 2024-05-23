@@ -17,22 +17,22 @@ SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]:-$0}"; )" &> /dev/null && 
 OUTPUT_PATH="./${SCRIPT_NAME}.`hostname`.`date +"%m%d-%H%M"`" # output directory created by this script
 STDOUT_LOG_FILE="${SCRIPT_NAME}.log"			# Filename to save STDOUT and STDERR
 
-NDCTL=("$(command -v ndctl)")                   # Path to ndctl, use -n option to specify location of the ndctl binary
-DAXCTL=("$(command -v daxctl)")                 # Path to daxctl
-IPMCTL=("$(command -v ipmctl)")                 # Path to ipmctl, use -i option to specify the location of the ipmctl binary
+NDCTL=("$(command -v ndctl)")             # Path to ndctl, use -n option to specify location of the ndctl binary
+DAXCTL=("$(command -v daxctl)")           # Path to daxctl
+IPMCTL=("$(command -v ipmctl)")           # Path to ipmctl, use -i option to specify the location of the ipmctl binary
 CXLCLI=("$(command -v cxl)")			        # Path to cxl, use -c option to specify the location of the cxl binary
 BC=("$(command -v bc)")				            # Path to bc
-NUMACTL=("$(command -v numactl)")		        # Path to numactl
-LSCPU=("$(command -v lscpu)")                   # Path to lscpu
-AWK=("$(command -v awk)")                       # Path to awk
-GREP=("$(command -v grep)")			            # Path to grep
+NUMACTL=("$(command -v numactl)")		      # Path to numactl
+LSCPU=("$(command -v lscpu)")             # Path to lscpu
+AWK=("$(command -v awk)")                 # Path to awk
+GREP=("$(command -v grep)")			          # Path to grep
 EGREP=("$(command -v egrep)")			        # Path to egrep
 SED=("$(command -v sed)")			            # Path to sed
-TPUT=("$(command -v tput)")			            # Path to tput
+TPUT=("$(command -v tput)")			          # Path to tput
 CP=("$(command -v cp)")				            # Path to cp
-FIND=("$(command -v find)")                     # Path to find
-TEE=("$(command -v tee)")                       # Path to tee
-TAIL=("$(command -v tail)")                     # Path to tail
+FIND=("$(command -v find)")               # Path to find
+TEE=("$(command -v tee)")                 # Path to tee
+TAIL=("$(command -v tail)")               # Path to tail
 
 #################################################################################################
 # Helper Functions
