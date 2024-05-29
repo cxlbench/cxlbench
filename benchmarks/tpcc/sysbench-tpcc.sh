@@ -515,7 +515,7 @@ function pause_for_stability()
 {
     local seconds
 
-    seconds=60
+    seconds=300
     total_seconds=$seconds
     while [ $seconds -gt 0 ]; do
         echo -ne "${STR_INFO} Pausing for $total_seconds seconds to give the containers time to initialize ... $seconds\033[0K\r"
