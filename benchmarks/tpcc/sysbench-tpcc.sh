@@ -26,11 +26,12 @@ NETWORK_NAME=mysqlsysbench
 
 # Container CPU and memory limits for the MySQL server and the Sysbench client
 # Note: The MySQL (server) values should be configured for the size of the test database. The OOM killer will stop the database if too few resources are assigned.
-CLIENT_CPU_LIMIT=4              # Number of vCPUs to give to the Sysbench container
-CLIENT_MEMORY_LIMIT=1g          # Amount of memory (GiB) to give to the Sysbench container
-SERVER_CPU_LIMIT=4              # Number of vCPUs to give to the MySQL container
-SERVER_MEMORY_LIMIT=16g         # Amount of memory (GiB) to give to the MySQL container
-PM_INSTANCES=1                  # Number of podman instances to start
+CLIENT_CPU_LIMIT=4              # Number of vCPUs to give to the Sysbench container: Override by -U
+CLIENT_MEMORY_LIMIT=1g          # Amount of memory (GiB) to give to the Sysbench container: Override by -V
+SERVER_CPU_LIMIT=4              # Number of vCPUs to give to the MySQL container: Overide by -D
+SERVER_MEMORY_LIMIT=16g         # Amount of memory (GiB) to give to the MySQL container: Override by -E
+INNODB_BUFFER_POOL_SIZE=10G     # Size of the innodb_buffer_pool: Override by -X
+PM_INSTANCES=1                  # Number of podman instances to start: Override by -i
 
 # === MySQL Variables ===
 
@@ -90,6 +91,8 @@ function goto() {
 function init() {
     # Create the output directory
     init_outputs
+    # Configure the innodb buffer pool size
+    sed -i "s/^innodb_buffer_pool_size.*/innodb_buffer_pool_size = $INNODB_BUFFER_POOL_SIZE/" ${SCRIPTDIR}/my.cnf.d/my.cnf
 }
 
 # Verify the required commands and utilities exist on the system
@@ -137,21 +140,35 @@ function print_usage()
 
     echo " [Machine confiuration options]"
     echo "      -C <numa_node>                              : [Required] CPU NUMA Node to run the MySQLServer"
+    echo "      -D <server_cpus_for_each_instance>          : [Optional] Number of vCPUs for each server [Default $SERVER_CPU_LIMIT]"
+    echo "      -E <server_memory_in_GB_for_each_instance>  : [Optional] Memory in GB for each server [Default $SERVER_MEMORY_LIMIT]"
     echo "      -M <numa_node,..>                           : [Required] Memory NUMA Node to run the MySQLServer"
+    echo "      -U <client_cpus_for_each_instance>          : [Optional] Number of vCPUs for each client [Default $CLIENT_CPU_LIMIT]"
+    echo "      -V <client_memory_in_GB_for_each_instance>  : [Optional] Memory in GB for each client [Default $CLIENT_MEMORY_LIMIT]"
+    echo "      -X <size_of_innodb_pool_in_GB>              : [Optional] Memory in GB for the mysql database [Default $INNODB_BUFFER_POOL_SIZE]"
     echo "      -S <numa_node>                              : [Required] CPU NUMA Node to run the Sysbench workers"
 
     echo "      -h                                          : Print this message"
     echo " "
     echo "Example 1: Runs a single MySQL server on NUMA 0 and a single SysBench instance on NUMA Node1, "
     echo "  prepares the database, runs the benchmark from 1..1000 threads in powers of two, "
-    echo "  and removes the database and containers when complete."
+    echo "  and removes the database and containers when complete. "
+    echo "  The server and client CPU, Memory sizes are default. " 
     echo " "
     echo "    $ ./${SCRIPT_NAME} -e dram -o test -i 1 -t 10 -W 1000  -C 0 -M 0 -S 1 -p -w -r -c"
     echo " "
     echo "Example 2: Created the MySQL and Sysbench containers, runs the MySQL container on NUMA Node 0, the "
     echo "  Sysbench container on NUMA Node 1, then prepares the database and exits. The containers are left running."
+    echo "  The server and client CPU, Memory sizes are default. " 
     echo " "
     echo "    $ ./${SCRIPT_NAME} -e dram -o test -C 0 -M 0 -S 1 -p"
+    echo " "
+    echo "Example 3: Created the MySQL and Sysbench containers, runs the MySQL container on NUMA Node 0, the "
+    echo "  Sysbench container on NUMA Node 1, then prepares the database and exits. The containers are left running."
+    echo "  52 cores on socket 0 and 512GB on socket 0 are used to run the MySQL container. "
+    echo "  26 cores on socket 1 and 48GB on socket 1 are used to nun the sysbench client container. "
+    echo " "
+    echo "    $ ./${SCRIPT_NAME} -e dram -o test -C 0 -M 0 -S 1 -p -D 52 -E 512 -U 26 -X 48"
     echo " "
 }
 
@@ -1354,46 +1371,26 @@ fi
 auto_detect_terminal_colors
 
 # Process the command line arguments
-while getopts 'cC:e:?hi:M:o:prs:S:t:T:wW:' opt; do
+while getopts 'cC:D:E:e:?hi:M:o:prs:S:t:T:U:V:wW:X:' opt; do
     case "$opt" in
-        c)
-            CLEANUP=1
-            ;;
-        C)
-            MYSQL_CPU_NUMA_NODE=${OPTARG}
-            ;;
+        ## Experiment Options
         e)
             MEM_ENVIRONMENT=${OPTARG}
             ;;
         i)
             PM_INSTANCES=${OPTARG}
             ;;
-        M)
-            MYSQL_MEM_NUMA_NODE=${OPTARG}
-            ;;
         o)
             OUTPUT_PREFIX=${OPTARG}
             ;;
-        p)
-            PREPARE_DB=1
-            ;;
-        r)
-            RUN_TEST=1
-            ;;
         s)
             SCALE=${OPTARG}
-            ;;
-        S)
-            SYSBENCH_NUMA_NODE=${OPTARG}
             ;;
         t)
             TABLES=${OPTARG}
             ;;
         T)
             SYSBENCH_RUNTIME=${OPTARG}
-            ;;
-        w)
-            WARM_DB=1
             ;;
         W)
             SYSBENCH_THREADS=${OPTARG}
@@ -1404,6 +1401,76 @@ while getopts 'cC:e:?hi:M:o:prs:S:t:T:wW:' opt; do
                 exit 1
             fi
             ;;
+        ##  Run Options
+        c)
+            CLEANUP=1
+            ;;
+        p)
+            PREPARE_DB=1
+            ;;
+        r)
+            RUN_TEST=1
+            ;;
+        w)
+            WARM_DB=1
+            ;;
+        ## Machine Configuration Options
+        C)
+            MYSQL_CPU_NUMA_NODE=${OPTARG}
+            ;;
+        D)
+            SERVER_CPU_LIMIT=${OPTARG}
+            # Validate SERVER_CPU_LIMIT is a valid integer
+            if ! [[ $SERVER_CPU_LIMIT =~ ^[1-9][0-9]*$ ]]; then
+                error_msg "Invalid value for '-D'. Please provide a valid integer value greater than or equal to 1."
+                exit 1
+            fi
+            ;;
+        E)
+            SERVER_MEMORY_LIMIT=${OPTARG}
+            # Validate SERVER_MEMORY_LIMIT is a valid integer
+            if ! [[ $SERVER_MEMORY_LIMIT =~ ^[1-9][0-9]*$ ]]; then
+                error_msg "Invalid value for '-E'. Please provide a valid integer value greater than or equal to 1."
+                exit 1
+            fi
+            ## Convert the server memory limit into GB
+            SERVER_MEMORY_LIMIT+=g
+            ;;
+        M)
+            MYSQL_MEM_NUMA_NODE=${OPTARG}
+            ;;
+        S)
+            SYSBENCH_NUMA_NODE=${OPTARG}
+            ;;
+        U)
+            CLIENT_CPU_LIMIT=${OPTARG}
+            # Validate SERVER_CPU_LIMIT is a valid integer
+            if ! [[ $CLIENT_CPU_LIMIT =~ ^[1-9][0-9]*$ ]]; then
+                error_msg "Invalid value for '-U'. Please provide a valid integer value greater than or equal to 1."
+                exit 1
+            fi
+            ;;
+        V)
+            CLIENT_MEMORY_LIMIT=${OPTARG}
+            # Validate SERVER_MEMORY_LIMIT is a valid integer
+            if ! [[ $CLIENT_MEMORY_LIMIT =~ ^[1-9][0-9]*$ ]]; then
+                error_msg "Invalid value for '-V'. Please provide a valid integer value greater than or equal to 1."
+                exit 1
+            fi
+            ## Convert the server memory limit into GB
+            CLIENT_MEMORY_LIMIT+=g
+            ;;
+        X)
+            INNODB_BUFFER_POOL_SIZE=${OPTARG}
+            # Validate SERVER_MEMORY_LIMIT is a valid integer
+            if ! [[ $INNODB_BUFFER_POOL_SIZE =~ ^[1-9][0-9]*$ ]]; then
+                error_msg "Invalid value for '-V'. Please provide a valid integer value greater than or equal to 1."
+                exit 1
+            fi
+            ## Convert the server memory limit into GB
+            INNODB_BUFFER_POOL_SIZE+=G
+            ;;
+        ## Misc Options
         h|\?|*)
             print_usage
             exit
