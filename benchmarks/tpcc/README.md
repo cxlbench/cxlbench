@@ -24,20 +24,34 @@ sysbench-tpcc.sh: Usage
       -r                                          : Run the Sysbench workload
  [Machine confiuration options]
       -C <numa_node>                              : [Required] CPU NUMA Node to run the MySQLServer
+      -D <server_cpus_for_each_instance>          : [Optional] Number of vCPUs for each server [Default 4]
+      -E <server_memory_in_GB_for_each_instance>  : [Optional] Memory in GB for each server [Default 16g]
       -M <numa_node,..>                           : [Required] Memory NUMA Node to run the MySQLServer
+      -U <client_cpus_for_each_instance>          : [Optional] Number of vCPUs for each client [Default 4]
+      -V <client_memory_in_GB_for_each_instance>  : [Optional] Memory in GB for each client [Default 1g]
+      -X <size_of_innodb_pool_in_GB>              : [Optional] Memory in GB for the mysql database [Default 10G]
       -S <numa_node>                              : [Required] CPU NUMA Node to run the Sysbench workers
       -h                                          : Print this message
- 
-Example 1: Runs a single MySQL server on NUMA 0 and a single SysBench instance on NUMA Node1, 
-  prepares the database, runs the benchmark from 1..1000 threads in powers of two, 
+
+Example 1: Runs a single MySQL server on NUMA 0 and a single SysBench instance on NUMA Node1,
+  prepares the database, runs the benchmark from 1..1000 threads in powers of two,
   and removes the database and containers when complete.
- 
+  The server and client CPU, Memory sizes are default.
+
     $ ./sysbench-tpcc.sh -e dram -o test -i 1 -t 10 -W 1000  -C 0 -M 0 -S 1 -p -w -r -c
- 
-Example 2: Created the MySQL and Sysbench containers, runs the MySQL container on NUMA Node 0, the 
+
+Example 2: Created the MySQL and Sysbench containers, runs the MySQL container on NUMA Node 0, the
   Sysbench container on NUMA Node 1, then prepares the database and exits. The containers are left running.
- 
+  The server and client CPU, Memory sizes are default.
+
     $ ./sysbench-tpcc.sh -e dram -o test -C 0 -M 0 -S 1 -p
+
+Example 3: Created the MySQL and Sysbench containers, runs the MySQL container on NUMA Node 0, the
+  Sysbench container on NUMA Node 1, then prepares the database and exits. The containers are left running.
+  52 cores on socket 0 and 512GB on socket 0 are used to run the MySQL container.
+  26 cores on socket 1 and 48GB on socket 1 are used to nun the sysbench client container.
+
+    $ ./sysbench-tpcc.sh -e dram -o test -C 0 -M 0 -S 1 -p -D 52 -E 512 -U 26 -X 48
 ```
 
 ## Install Instructions
