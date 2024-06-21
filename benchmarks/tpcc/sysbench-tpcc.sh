@@ -1425,7 +1425,7 @@ then
     exit 1
 else
     # Validate the user provided two or more NUMA nodes in the (-M) option for numactl options
-    if [[ ("$MEM_ENVIRONMENT" == "numapreferred" || "$MEM_ENVIRONMENT" == "numainterleave" ) ]]
+    if [[ "$MEM_ENVIRONMENT" == "numainterleave" ]]
     then
         # Count the number of values separated by commas
         IFS=',' read -ra NUMA_NODES <<< "$MYSQL_MEM_NUMA_NODE"
@@ -1434,6 +1434,14 @@ else
         # Check if the variable has two or more values separated by commas
         if [[ $NUM_NODE_COUNT -lt 2 ]]; then
             error_msg "Two or more NUMA node must be specified with (-M) with the '${MEM_ENVIRONMENT}' (-e) option"
+            print_usage
+            exit 1
+        fi
+    elif [[ "$MEM_ENVIRONMENT" == "numapreferred" ]]
+    then
+        # Check if the value is a single integer
+        if ! [[ "$MYSQL_MEM_NUMA_NODE" =~ ^[0-9]+$ ]]; then
+	    error_msg "A single NUMA node must be specified with (-M) when using the '${MEM_ENVIRONMENT}' (-e) option"
             print_usage
             exit 1
         fi
