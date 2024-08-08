@@ -39,7 +39,7 @@ MYSQL_ROOT_PASSWORD=my-secret-pw                        # Root Users Password
 MYSQL_START_PORT=3333                                   # Host Port number for the first instance. Additional instances will increment by 1 for each instance 3306..3307..3308..
 MYSQL_DATA_DIR=/data                                    # Base directory for the MySQL Data Directory on the host
 MYSQL_CONF=${SCRIPTDIR}/my.cnf.d/my.cnf                 # Location of the my.cnf file(s)
-MySQLDockerImgTag="docker.io/library/mysql:latest"      # MySQL Version. Get the Docker Tag ID from https://hub.docker.com/_/mysql
+MySQLDockerImgTag="docker.io/library/mysql:8.0.39"      # MySQL Version. Get the Docker Tag ID from https://hub.docker.com/_/mysql
 
 
 # === Sysbench Variables ===
