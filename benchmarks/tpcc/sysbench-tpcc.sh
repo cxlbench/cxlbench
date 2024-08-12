@@ -500,22 +500,36 @@ function start_sysbench_containers()
     fi
 }
 
-# The MySQL and Sysbench may take a few seconds to completely start, espceially on the first run
-# This function adds a simple delay to the script to give the containers time to complete their startup sequence
+# The MySQL and Sysbench containers may take a few seconds to completely start, especially on the first run.
+# This function watches the podman logs for all MySQL containers, to make sure they have all started before returning.
 # args: none
-# return: none
-function pause_for_stability()
-{
-    local seconds
+# return: 0=success, 1=error
+function pause_for_stability() {
+    for i in $(seq 1 ${PM_INSTANCES});
+    do
+        container_name="mysql${i}"
+        expected_message="X Plugin ready for connections. Bind-address: '::' port: 33060, socket: /var/run/mysqld/mysqlx.sock"
 
-    seconds=60
-    total_seconds=$seconds
-    while [ $seconds -gt 0 ]; do
-        echo -ne "${STR_INFO} Pausing for $total_seconds seconds to give the containers time to initialize ... $seconds\033[0K\r"
-        sleep 1
-        seconds=$((seconds-1))
+        info_msg "Waiting for $container_name to be ready..."
+
+        local elapsed_seconds=0
+        while true; do
+            log_output=$(podman logs "$container_name" 2>&1 | tail -1)
+
+            if [[ "$log_output" == *"$expected_message"* ]]; then
+                echo
+                info_msg "MySQL is ready."
+                break
+            else
+                echo -ne "${STR_INFO} waiting for containers to initialize. Elapsed: ${elapsed_seconds}s.\033[0K\r"
+
+                sleep 1
+                ((elapsed_seconds++))
+            fi
+        done
     done
-    echo
+
+    info_msg "Done waiting for MySQL container(s) to start"
 }
 
 # Create the test MySQL database inside the MySQL container
@@ -1210,7 +1224,7 @@ function is_kernel_tpp_enabled() {
 # args: none
 # returns: nothing
 function enable_kernel_tpp() {
-    local err_state=false 
+    local err_state=false
 
     if echo 2 > /proc/sys/kernel/numa_balancing;
     then
@@ -1221,7 +1235,7 @@ function enable_kernel_tpp() {
         # Disable Kernel TPP after the benchmarks complete
         OPT_FUNCS_AFTER="disable_kernel_tpp"
     fi
-    
+
     if echo 1 > /sys/kernel/mm/numa/demotion_enabled;
     then
         error_msg "Failed to enable Kernel Memory Tiering Page Demotion"
@@ -1243,7 +1257,7 @@ function enable_kernel_tpp() {
 # args: none
 # returns: nothing
 function disable_kernel_tpp() {
-    local err_state=false 
+    local err_state=false
 
     if echo 1 > /proc/sys/kernel/numa_balancing;
     then
@@ -1252,7 +1266,7 @@ function disable_kernel_tpp() {
     else
         info_msg "Successfully enabled Kernel Memory Tiering"
     fi
-    
+
     if echo 0 > /sys/kernel/mm/numa/demotion_enabled;
     then
         error_msg "Failed to enable Kernel Memory Tiering Page Demotion"
@@ -1457,7 +1471,7 @@ fi
 if [ -z ${OUTPUT_PREFIX} ];
 then
     OUTPUT_PREFIX=""
-else 
+else
     # Set the OUTPUT_PREFIX for files
     OUTPUT_PREFIX+="_"
     # Set the OUTPUT_PATH
