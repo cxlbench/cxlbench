@@ -12,6 +12,7 @@ function setup_strings() {
     STR_SKIPPED="${blue}[ SKIPPED  ]${normal}"
     STR_UNKNOWN="${white}[ UNKNOWN  ]${normal}"
     STR_ERROR="${red}[ ERROR    ]${normal}"
+    STR_ERROR="${red}[ FATAL    ]${normal}"
   else
     STR_PASSED="[ PASSED   ]"
     STR_WARN="[ WARNING  ]"
@@ -22,6 +23,7 @@ function setup_strings() {
     STR_SKIPPED="[ SKIPPED  ]"
     STR_UNKNOWN="[ UNKNOWN  ]"
     STR_ERROR="[ ERROR    ]"
+    STR_ERROR="[ FATAL    ]"
   fi
 }
 
@@ -88,12 +90,15 @@ _MSG_FMT="${_HDR_FMT} : %s\n"
 _DBG_HDR_FMT="%.23s %s%s "
 _DBG_MSG_FMT="${_DBG_HDR_FMT}%s\n"
 
-# Print INFO messages with the function name and optional string message
-# arg1 = Message string
-# arg2 = Indent size
-function info_msg() {
+# Utility function to print all messages in the same format
+# arg1 = Type of message, INFO, ERROR, FATAL
+# arg2 = Message string
+# arg3 = Indent size
+function print_msg() {
   local indentstr=""
-  local icnt=${2}
+  local msg_type=${1}
+  local message=${2}
+  local icnt=${3}
   local c
  
   # If an indent size arg is provided, generate the string
@@ -107,187 +112,52 @@ function info_msg() {
     fi
   fi
 
-  # Ensure we capture the rule function, not an intermediary calling function - rule_result()
-  if [[ "${FUNCNAME[1]}" == "rule_result" ]]; then 
-    echo "${indentstr}${STR_INFO} ${FUNCNAME[2]} : ${1}"
-  else 
-    echo "${indentstr}${STR_INFO} ${FUNCNAME[1]} : ${1}"
-  fi
+  echo "${indentstr}${msg_type} ${FUNCNAME[1]} : ${message}"
+}
+
+# Print INFO messages with the function name and optional string message
+function info_msg() {
+  print_msg "${STR_INFO}" "${1}" ${2}
 }
 
 # Print WARNING messages with the function name and optional string message
 function warn_msg() {
-  local indentstr=""
-  local icnt=${2}
-  local c
-
-  # If an indent size arg is provided, generate the string
-  if [[ -n "${icnt}" ]]; then
-    # Verify it's a positive number
-    local re='^[0-9]+$'
-    if [[ "${icnt}" =~ $re ]] ; then
-      for (( c=1; c<=${icnt}; c++ )); do
-        indentstr+=" "
-      done
-    fi
-  fi
-
-  # Ensure we capture the rule function, not an intermediary calling function - rule_result()
-  if [[ "${FUNCNAME[1]}" == "rule_result" ]]; then
-    echo "${indentstr}${STR_WARN} ${FUNCNAME[2]} : ${1}"
-  else
-    echo "${indentstr}${STR_WARN} ${FUNCNAME[1]} : ${1}"
-  fi
+  print_msg "${STR_WARN}" "${1}" ${2}
 }
 
 # Print CRITICAL messages with the function name and optional string message
 function crit_msg() {
-  local indentstr=""
-  local icnt=${2}
-  local c
-
-  # If an indent size arg is provided, generate the string
-  if [[ -n "${icnt}" ]]; then
-    # Verify it's a positive number
-    local re='^[0-9]+$'
-    if [[ "${icnt}" =~ $re ]] ; then
-      for (( c=1; c<=${icnt}; c++ )); do
-        indentstr+=" "
-      done
-    fi
-  fi
-
-  # Ensure we capture the rule function, not an intermediary calling function - rule_result()
-  if [[ "${FUNCNAME[1]}" == "rule_result" ]]; then
-    echo "${indentstr}${STR_CRIT} ${FUNCNAME[2]} : ${1}"
-  else
-    echo "${indentstr}${STR_CRIT} ${FUNCNAME[1]} : ${1}"
-  fi
+  print_msg "${STR_CRIT}" "${1}" ${2}
 }
 
 # Print SKIPPED messages with the function name and optional string message
 function skipped_msg() {
-  local indentstr=""
-  local icnt=${2}
-  local c
-
-  # If an indent size arg is provided, generate the string
-  if [[ -n "${icnt}" ]]; then
-    # Verify it's a positive number
-    local re='^[0-9]+$'
-    if [[ "${icnt}" =~ $re ]] ; then
-      for (( c=1; c<=${icnt}; c++ )); do
-        indentstr+=" "
-      done
-    fi
-  fi
-
-  # Ensure we capture the rule function, not an intermediary calling function - rule_result()
-  if [[ "${FUNCNAME[1]}" == "rule_result" ]]; then
-    echo "${indentstr}${STR_SKIPPED} ${FUNCNAME[2]} : ${1}"
-  else
-    echo "${indentstr}${STR_SKIPPED} ${FUNCNAME[1]} : ${1}"
-  fi
+  print_msg "${STR_SKIPPED}" "${1}" ${2}
 }
 
 # Print PASSED messages with the function name and optional string message
 function passed_msg() {
-  local indentstr=""
-  local icnt=${2}
-  local c
-
-  # If an indent size arg is provided, generate the string
-  if [[ -n "${icnt}" ]]; then
-    # Verify it's a positive number
-    local re='^[0-9]+$'
-    if [[ "${icnt}" =~ $re ]] ; then
-      for (( c=1; c<=${icnt}; c++ )); do
-        indentstr+=" "
-      done
-    fi
-  fi
-
-  # Ensure we capture the rule function, not an intermediary calling function - rule_result()
-  if [[ "${FUNCNAME[1]}" == "rule_result" ]]; then
-    echo "${indentstr}${STR_PASSED} ${FUNCNAME[2]} : ${1}"
-  else
-    echo "${indentstr}${STR_PASSED} ${FUNCNAME[1]} : ${1}"
-  fi
+  print_msg "${STR_PASSED}" "${1}" ${2}
 }
 
 # Print FAILED messages with the function name and optional string message
 function failed_msg() {
-  local indentstr=""
-  local icnt=${2}
-  local c
-
-  # If an indent size arg is provided, generate the string
-  if [[ -n "${icnt}" ]]; then
-    # Verify it's a positive number
-    local re='^[0-9]+$'
-    if [[ "${icnt}" =~ $re ]] ; then
-      for (( c=1; c<=${icnt}; c++ )); do
-        indentstr+=" "
-      done
-    fi
-  fi
-
-  # Ensure we capture the rule function, not an intermediary calling function - rule_result()
-  if [[ "${FUNCNAME[1]}" == "rule_result" ]]; then
-    echo "${indentstr}${STR_FAIL} ${FUNCNAME[2]} : ${1}"
-  else
-    echo "${indentstr}${STR_FAIL} ${FUNCNAME[1]} : ${1}"
-  fi
+  print_msg "${STR_FAIL}" "${1}" ${2}
 }
 
 # Print UNKNOWN messages with the function name and optional string message
 function unknown_msg() {
-  local indentstr=""
-  local icnt=${2}
-  local c
-
-  # If an indent size arg is provided, generate the string
-  if [[ -n "${icnt}" ]]; then
-    # Verify it's a positive number
-    local re='^[0-9]+$'
-    if [[ "${icnt}" =~ $re ]] ; then
-      for (( c=1; c<=${icnt}; c++ )); do
-        indentstr+=" "
-      done
-    fi
-  fi
-
-  # Ensure we capture the rule function, not an intermediary calling function - rule_result()
-  if [[ "${FUNCNAME[1]}" == "rule_result" ]]; then
-    echo "${indentstr}${STR_UNKNOWN} ${FUNCNAME[2]} : ${1}"
-  else
-    echo "${indentstr}${STR_UNKNOWN} ${FUNCNAME[1]} : ${1}"
-  fi
+  print_msg "${STR_UNKNOWN}" "${1}" ${2}
 }
 
 # Print ERROR messages with the function name and optional string message
 function error_msg() {
-  local indentstr=""
-  local icnt=${2}
-  local c
+  print_msg "${STR_ERROR}" "${1}" ${2}
+}
 
-  # If an indent size arg is provided, generate the string
-  if [[ -n "${icnt}" ]]; then
-    # Verify it's a positive number
-    local re='^[0-9]+$'
-    if [[ "${icnt}" =~ $re ]] ; then
-      for (( c=1; c<=${icnt}; c++ )); do
-        indentstr+=" "
-      done
-    fi
-  fi
-
-  # Ensure we capture the rule function, not an intermediary calling function - rule_result()
-  if [[ "${FUNCNAME[1]}" == "rule_result" ]]; then
-    echo "${indentstr}${STR_ERROR} ${FUNCNAME[2]} : ${1}"
-  else
-    echo "${indentstr}${STR_ERROR} ${FUNCNAME[1]} : ${1}"
-  fi
+# Print ERROR messages with the function name and optional string message
+function fatal_msg() {
+  print_msg "${STR_FATAL}" "${1}" ${2}
 }
 
 # Print Debug messages with date/time, function name, line number, and optional string message

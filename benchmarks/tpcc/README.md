@@ -7,30 +7,51 @@ The script does not require root priviledges to execute as Podman allows us to r
 
 ```bash
 sysbench-tpcc.sh: Usage
-    sysbench-tpcc.sh [-o output_prefix] [-p] [-r]
-      -c                         : Cleanup. Completely remove all containers and the MySQL database
-      -C <numa_node>             : [Required] CPU NUMA Node to run the MySQLServer
-      -e dram|interleave         : [Required] Type of experiment to run
-      -i <number_of_instances>   : The number of container intances to execute: Default 1
-      -r                         : Run the Sysbench workload
-      -p                         : Prepare the database
-      -M <numa_node,..>          : [Required] Memory NUMA Node(s) to run the MySQLServer
-      -o <prefix>                : [Required] prefix of the output files: Default 'test'
-      -s <scale>                 : Number of warehouses (scale): Default 10
-      -S <numa_node>             : [Required] NUMA Node to run the Sysbench workers
-      -t <number_of_tables>      : The number of tables per warehouse: Default 10
-      -w                         : Warm the database before running tests
-      -h                         : Print this message
- 
-Example 1: Runs a single MySQL server on NUMA 0 and a single SysBench instance on NUMA Node1, 
-  prepares the database, runs the benchmark, and removes the database and containers when complete.
- 
-    $ ./sysbench-tpcc.sh -c -C 0 -e dram -i 1 -r -p -M 0 -o test -S1 -t 10 -w
- 
-Example 2: Created the MySQL and Sysbench containers, runs the MySQL container on NUMA Node 0, the 
+    sysbench-tpcc.sh OPTIONS
+ [Experiment options]
+      -e dram|cxl|numainterleave|numapreferred|   : [Required] Memory environment
+         kerneltpp
+      -i <number_of_instances>                    : The number of container intances to execute: Default 1
+      -o <prefix>                                 : [Required] prefix of the output files: Default 'test'
+      -s <scale>                                  : Number of warehouses (scale): Default 10
+      -t <number_of_tables>                       : The number of tables per warehouse: Default 10
+      -T <run time>                               : Number of seconds to 'run' the benchmark. Default 300
+      -W <worker threads>                         : Maximum number of Sysbench worker threads. Default 1
+ [Run options]
+      -c                                          : Cleanup. Completely remove all containers and the MySQL database
+      -p                                          : Prepare the database
+      -w                                          : Warm the database. Default False.
+      -r                                          : Run the Sysbench workload
+ [Machine confiuration options]
+      -C <numa_node>                              : [Required] CPU NUMA Node to run the MySQLServer
+      -D <server_cpus_for_each_instance>          : [Optional] Number of vCPUs for each server [Default 4]
+      -E <server_memory_in_GB_for_each_instance>  : [Optional] Memory in GB for each server [Default 16g]
+      -M <numa_node,..>                           : [Required] Memory NUMA Node to run the MySQLServer
+      -U <client_cpus_for_each_instance>          : [Optional] Number of vCPUs for each client [Default 4]
+      -V <client_memory_in_GB_for_each_instance>  : [Optional] Memory in GB for each client [Default 1g]
+      -X <size_of_innodb_pool_in_GB>              : [Optional] Memory in GB for the mysql database [Default 10G]
+      -S <numa_node>                              : [Required] CPU NUMA Node to run the Sysbench workers
+      -h                                          : Print this message
+
+Example 1: Runs a single MySQL server on NUMA 0 and a single SysBench instance on NUMA Node1,
+  prepares the database, runs the benchmark from 1..1000 threads in powers of two,
+  and removes the database and containers when complete.
+  The server and client CPU, Memory sizes are default.
+
+    $ ./sysbench-tpcc.sh -e dram -o test -i 1 -t 10 -W 1000  -C 0 -M 0 -S 1 -p -w -r -c
+
+Example 2: Created the MySQL and Sysbench containers, runs the MySQL container on NUMA Node 0, the
   Sysbench container on NUMA Node 1, then prepares the database and exits. The containers are left running.
- 
-    $ ./sysbench-tpcc.sh -C 0 -e dram -M0 -o test -S 1  -p
+  The server and client CPU, Memory sizes are default.
+
+    $ ./sysbench-tpcc.sh -e dram -o test -C 0 -M 0 -S 1 -p
+
+Example 3: Created the MySQL and Sysbench containers, runs the MySQL container on NUMA Node 0, the
+  Sysbench container on NUMA Node 1, then prepares the database and exits. The containers are left running.
+  52 cores on socket 0 and 512GB on socket 0 are used to run the MySQL container.
+  26 cores on socket 1 and 48GB on socket 1 are used to nun the sysbench client container.
+
+    $ ./sysbench-tpcc.sh -e dram -o test -C 0 -M 0 -S 1 -p -D 52 -E 512 -U 26 -X 48
 ```
 
 ## Install Instructions
@@ -105,6 +126,27 @@ cpuset cpu memory pids
 
 If the above doesn't work the first time, log out of all sessions for that user and login again. Alternatively, reboot the host.
 
+### Podman Errors
+
+If you see the following error
+```
+Error validating CNI config file /home/<username>/.config/cni/net.d/mysqlsysbench.conflist: [plugin bridge does not support config version \"1.0.0\" plugin portmap does not support config version \"1.0.0\" plugin firewall does not support config version \"1.0.0\" plugin tuning does not support config version \"1.0.0\"]
+```
+
+You must fix the CNI config files via the following method
+
+```
+bash
+$ podman network ls
+NETWORK ID    NAME           VERSION     PLUGINS
+2f259bab93aa  podman         0.4.0       bridge,portmap,firewall,tuning
+0c75ec5d56ea  mysqlsysbench  1.0.0       bridge,portmap,firewall,tuning,dnsname
+
+$ vi ~/.config/cnd/net.d/mysqlsysbench.conflist
+// Change the line "cniVersion": "1.0.0" to
+"cniVersion":  "0.4.0"
+```
+
 
 #
 
@@ -124,7 +166,7 @@ NETWORK_NAME=mysqlsysbench
 CLIENT_CPU_LIMIT=4  								# Number of vCPUs to give to the Sysbench container
 CLIENT_MEMORY_LIMIT=1g  							# Amount of memory (GiB) to give to the Sysbench container
 SERVER_CPU_LIMIT=4  								# Number of vCPUs to give to the MySQL container
-SERVER_MEMORY_LIMIT=16g  							# Amount of memory (GiB) to give to the Sysbench container
+SERVER_MEMORY_LIMIT=16g  							# Amount of memory (GiB) to give to the MySQL container
 
 # === MySQL Variables ===
 MYSQL_ROOT_PASSWORD=my-secret-pw  					# Root Users Password

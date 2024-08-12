@@ -10,10 +10,10 @@
 # The goal of this script is to show multi-instance performance as we start
 # more DB instances.
 
-source ../../lib/common     # Provides common functions
-source ../../lib/msgfmt     # Provides pretty print messages to STDOUT
+SCRIPTDIR=$( dirname $( readlink -f $0 ))
+source ${SCRIPTDIR}/../../lib/common     # Provides common functions
+source ${SCRIPTDIR}/../../lib/msgfmt     # Provides pretty print messages to STDOUT
 
-SCRIPT_DIR=$( dirname $( readlink -f $0 ))
 
 #################################################################################################
 # Variables
@@ -26,19 +26,20 @@ NETWORK_NAME=mysqlsysbench
 
 # Container CPU and memory limits for the MySQL server and the Sysbench client
 # Note: The MySQL (server) values should be configured for the size of the test database. The OOM killer will stop the database if too few resources are assigned.
-CLIENT_CPU_LIMIT=4              # Number of vCPUs to give to the Sysbench container
-CLIENT_MEMORY_LIMIT=1g          # Amount of memory (GiB) to give to the Sysbench container
-SERVER_CPU_LIMIT=4              # Number of vCPUs to give to the MySQL container
-SERVER_MEMORY_LIMIT=16g         # Amount of memory (GiB) to give to the Sysbench container
-PM_INSTANCES=1                  # Number of podman instances to start
+CLIENT_CPU_LIMIT=4              # Number of vCPUs to give to the Sysbench container: Override by -U
+CLIENT_MEMORY_LIMIT=1g          # Amount of memory (GiB) to give to the Sysbench container: Override by -V
+SERVER_CPU_LIMIT=4              # Number of vCPUs to give to the MySQL container: Overide by -D
+SERVER_MEMORY_LIMIT=16g         # Amount of memory (GiB) to give to the MySQL container: Override by -E
+INNODB_BUFFER_POOL_SIZE=10G     # Size of the innodb_buffer_pool: Override by -X
+PM_INSTANCES=1                  # Number of podman instances to start: Override by -i
 
 # === MySQL Variables ===
 
 MYSQL_ROOT_PASSWORD=my-secret-pw                        # Root Users Password
 MYSQL_START_PORT=3333                                   # Host Port number for the first instance. Additional instances will increment by 1 for each instance 3306..3307..3308..
 MYSQL_DATA_DIR=/data                                    # Base directory for the MySQL Data Directory on the host
-MYSQL_CONF=${SCRIPT_DIR}/my.cnf.d/my.cnf                # Location of the my.cnf file(s)
-MySQLDockerImgTag="docker.io/library/mysql:latest"      # MySQL Version. Get the Docker Tag ID from https://hub.docker.com/_/mysql
+MYSQL_CONF=${SCRIPTDIR}/my.cnf.d/my.cnf                 # Location of the my.cnf file(s)
+MySQLDockerImgTag="docker.io/library/mysql:8.0.39"      # MySQL Version. Get the Docker Tag ID from https://hub.docker.com/_/mysql
 
 
 # === Sysbench Variables ===
@@ -69,6 +70,7 @@ OPT_FUNCS_AFTER=""                    # Optional functions that get called after
 function ctrl_c() {
   info_msg "Received CTRL+C - aborting"
   stop_containers
+  remove_containers
   display_end_info
   exit 1
 }
@@ -89,6 +91,8 @@ function goto() {
 function init() {
     # Create the output directory
     init_outputs
+    # Configure the innodb buffer pool size
+    sed -i "s/^innodb_buffer_pool_size.*/innodb_buffer_pool_size = $INNODB_BUFFER_POOL_SIZE/" ${SCRIPTDIR}/my.cnf.d/my.cnf
 }
 
 # Verify the required commands and utilities exist on the system
@@ -118,33 +122,53 @@ function print_usage()
 {
     echo -e "${SCRIPT_NAME}: Usage"
     echo "    ${SCRIPT_NAME} OPTIONS"
-    echo "      -c                                          : Cleanup. Completely remove all containers and the MySQL database"
-    echo "      -C <numa_node>                              : [Required] CPU NUMA Node to run the MySQLServer"
+    echo " [Experiment options]"
     echo "      -e dram|cxl|numainterleave|numapreferred|   : [Required] Memory environment"
     echo "         kerneltpp"
     echo "      -i <number_of_instances>                    : The number of container intances to execute: Default 1"
-    echo "      -r                                          : Run the Sysbench workload"
-    echo "      -p                                          : Prepare the database"
-    echo "      -M <numa_node,..>                           : [Required] Memory NUMA Node to run the MySQLServer"
     echo "      -o <prefix>                                 : [Required] prefix of the output files: Default 'test'"
     echo "      -s <scale>                                  : Number of warehouses (scale): Default 10"
-    echo "      -S <numa_node>                              : [Required] CPU NUMA Node to run the Sysbench workers"
     echo "      -t <number_of_tables>                       : The number of tables per warehouse: Default 10"
     echo "      -T <run time>                               : Number of seconds to 'run' the benchmark. Default ${SYSBENCH_RUNTIME}"
-    echo "      -w                                          : Warm the database. Default False."
     echo "      -W <worker threads>                         : Maximum number of Sysbench worker threads. Default 1"
+
+    echo " [Run options]"
+    echo "      -c                                          : Cleanup. Completely remove all containers and the MySQL database"
+    echo "      -p                                          : Prepare the database"
+    echo "      -w                                          : Warm the database. Default False."
+    echo "      -r                                          : Run the Sysbench workload"
+
+    echo " [Machine confiuration options]"
+    echo "      -C <numa_node>                              : [Required] CPU NUMA Node to run the MySQLServer"
+    echo "      -D <server_cpus_for_each_instance>          : [Optional] Number of vCPUs for each server [Default $SERVER_CPU_LIMIT]"
+    echo "      -E <server_memory_in_GB_for_each_instance>  : [Optional] Memory in GB for each server [Default $SERVER_MEMORY_LIMIT]"
+    echo "      -M <numa_node,..>                           : [Required] Memory NUMA Node to run the MySQLServer"
+    echo "      -U <client_cpus_for_each_instance>          : [Optional] Number of vCPUs for each client [Default $CLIENT_CPU_LIMIT]"
+    echo "      -V <client_memory_in_GB_for_each_instance>  : [Optional] Memory in GB for each client [Default $CLIENT_MEMORY_LIMIT]"
+    echo "      -X <size_of_innodb_pool_in_GB>              : [Optional] Memory in GB for the mysql database [Default $INNODB_BUFFER_POOL_SIZE]"
+    echo "      -S <numa_node>                              : [Required] CPU NUMA Node to run the Sysbench workers"
+
     echo "      -h                                          : Print this message"
     echo " "
     echo "Example 1: Runs a single MySQL server on NUMA 0 and a single SysBench instance on NUMA Node1, "
     echo "  prepares the database, runs the benchmark from 1..1000 threads in powers of two, "
-    echo "  and removes the database and containers when complete."
+    echo "  and removes the database and containers when complete. "
+    echo "  The server and client CPU, Memory sizes are default. " 
     echo " "
-    echo "    $ ./${SCRIPT_NAME} -c -C 0 -e dram -i 1 -r -p -M 0 -o test -S1 -t 10 -w -W 1000"
+    echo "    $ ./${SCRIPT_NAME} -e dram -o test -i 1 -t 10 -W 1000  -C 0 -M 0 -S 1 -p -w -r -c"
     echo " "
     echo "Example 2: Created the MySQL and Sysbench containers, runs the MySQL container on NUMA Node 0, the "
     echo "  Sysbench container on NUMA Node 1, then prepares the database and exits. The containers are left running."
+    echo "  The server and client CPU, Memory sizes are default. " 
     echo " "
-    echo "    $ ./${SCRIPT_NAME} -C 0 -e dram -M0 -o test -S 1  -p"
+    echo "    $ ./${SCRIPT_NAME} -e dram -o test -C 0 -M 0 -S 1 -p"
+    echo " "
+    echo "Example 3: Created the MySQL and Sysbench containers, runs the MySQL container on NUMA Node 0, the "
+    echo "  Sysbench container on NUMA Node 1, then prepares the database and exits. The containers are left running."
+    echo "  52 cores on socket 0 and 512GB on socket 0 are used to run the MySQL container. "
+    echo "  26 cores on socket 1 and 48GB on socket 1 are used to nun the sysbench client container. "
+    echo " "
+    echo "    $ ./${SCRIPT_NAME} -e dram -o test -C 0 -M 0 -S 1 -p -D 52 -E 512 -U 26 -X 48"
     echo " "
 }
 
@@ -186,7 +210,7 @@ function dstat_find_location_of_db()
 function set_numactl_options()
 {
     case "$MEM_ENVIRONMENT" in
-        dram|cxl|mm)
+        dram|cxl|mm|kerneltpp)
             NUMACTL_OPTION="--cpunodebind ${MYSQL_CPU_NUMA_NODE} --membind ${MYSQL_MEM_NUMA_NODE}"
             ;;
         numapreferred)
@@ -1294,8 +1318,8 @@ function kernel_tpp_feature() {
         if [[ $(is_kernel_tpp_enabled) -eq 0 ]] && [[ $EUID -ne 0 ]]; # User is not root, so we can't auto-enable TPP
         then
             error_msg "Please enable Linux Kernel Transparent Page Placement (TPP), then re-run this test. As root, run:"
-            info_msg " $ sudo echo 2 > /proc/sys/kernel/numa_balancing"
-            info_msg " $ sudo echo 1 > /sys/kernel/mm/numa/demotion_enabled"
+            info_msg " $ sudo sh -c \"echo 2 > /proc/sys/kernel/numa_balancing\""
+            info_msg " $ sudo sh -c \"echo 1 > /sys/kernel/mm/numa/demotion_enabled\""
             exit 1
         elif [[ $(is_kernel_tpp_enabled) -eq 0 ]] && [[ $EUID -eq 0 ]]; # User is root
         then
@@ -1361,46 +1385,26 @@ fi
 auto_detect_terminal_colors
 
 # Process the command line arguments
-while getopts 'cC:e:?hi:M:o:prs:S:t:T:wW:' opt; do
+while getopts 'cC:D:E:e:?hi:M:o:prs:S:t:T:U:V:wW:X:' opt; do
     case "$opt" in
-        c)
-            CLEANUP=1
-            ;;
-        C)
-            MYSQL_CPU_NUMA_NODE=${OPTARG}
-            ;;
+        ## Experiment Options
         e)
             MEM_ENVIRONMENT=${OPTARG}
             ;;
         i)
             PM_INSTANCES=${OPTARG}
             ;;
-        M)
-            MYSQL_MEM_NUMA_NODE=${OPTARG}
-            ;;
         o)
             OUTPUT_PREFIX=${OPTARG}
             ;;
-        p)
-            PREPARE_DB=1
-            ;;
-        r)
-            RUN_TEST=1
-            ;;
         s)
             SCALE=${OPTARG}
-            ;;
-        S)
-            SYSBENCH_NUMA_NODE=${OPTARG}
             ;;
         t)
             TABLES=${OPTARG}
             ;;
         T)
             SYSBENCH_RUNTIME=${OPTARG}
-            ;;
-        w)
-            WARM_DB=1
             ;;
         W)
             SYSBENCH_THREADS=${OPTARG}
@@ -1411,6 +1415,76 @@ while getopts 'cC:e:?hi:M:o:prs:S:t:T:wW:' opt; do
                 exit 1
             fi
             ;;
+        ##  Run Options
+        c)
+            CLEANUP=1
+            ;;
+        p)
+            PREPARE_DB=1
+            ;;
+        r)
+            RUN_TEST=1
+            ;;
+        w)
+            WARM_DB=1
+            ;;
+        ## Machine Configuration Options
+        C)
+            MYSQL_CPU_NUMA_NODE=${OPTARG}
+            ;;
+        D)
+            SERVER_CPU_LIMIT=${OPTARG}
+            # Validate SERVER_CPU_LIMIT is a valid integer
+            if ! [[ $SERVER_CPU_LIMIT =~ ^[1-9][0-9]*$ ]]; then
+                error_msg "Invalid value for '-D'. Please provide a valid integer value greater than or equal to 1."
+                exit 1
+            fi
+            ;;
+        E)
+            SERVER_MEMORY_LIMIT=${OPTARG}
+            # Validate SERVER_MEMORY_LIMIT is a valid integer
+            if ! [[ $SERVER_MEMORY_LIMIT =~ ^[1-9][0-9]*$ ]]; then
+                error_msg "Invalid value for '-E'. Please provide a valid integer value greater than or equal to 1."
+                exit 1
+            fi
+            ## Convert the server memory limit into GB
+            SERVER_MEMORY_LIMIT+=g
+            ;;
+        M)
+            MYSQL_MEM_NUMA_NODE=${OPTARG}
+            ;;
+        S)
+            SYSBENCH_NUMA_NODE=${OPTARG}
+            ;;
+        U)
+            CLIENT_CPU_LIMIT=${OPTARG}
+            # Validate SERVER_CPU_LIMIT is a valid integer
+            if ! [[ $CLIENT_CPU_LIMIT =~ ^[1-9][0-9]*$ ]]; then
+                error_msg "Invalid value for '-U'. Please provide a valid integer value greater than or equal to 1."
+                exit 1
+            fi
+            ;;
+        V)
+            CLIENT_MEMORY_LIMIT=${OPTARG}
+            # Validate SERVER_MEMORY_LIMIT is a valid integer
+            if ! [[ $CLIENT_MEMORY_LIMIT =~ ^[1-9][0-9]*$ ]]; then
+                error_msg "Invalid value for '-V'. Please provide a valid integer value greater than or equal to 1."
+                exit 1
+            fi
+            ## Convert the server memory limit into GB
+            CLIENT_MEMORY_LIMIT+=g
+            ;;
+        X)
+            INNODB_BUFFER_POOL_SIZE=${OPTARG}
+            # Validate SERVER_MEMORY_LIMIT is a valid integer
+            if ! [[ $INNODB_BUFFER_POOL_SIZE =~ ^[1-9][0-9]*$ ]]; then
+                error_msg "Invalid value for '-V'. Please provide a valid integer value greater than or equal to 1."
+                exit 1
+            fi
+            ## Convert the server memory limit into GB
+            INNODB_BUFFER_POOL_SIZE+=G
+            ;;
+        ## Misc Options
         h|\?|*)
             print_usage
             exit
@@ -1432,7 +1506,7 @@ then
     exit 1
 else
     # Validate the user provided two or more NUMA nodes in the (-M) option for numactl options
-    if [[ ("$MEM_ENVIRONMENT" == "numapreferred" || "$MEM_ENVIRONMENT" == "numainterleave" ) ]]
+    if [[ "$MEM_ENVIRONMENT" == "numainterleave" ]]
     then
         # Count the number of values separated by commas
         IFS=',' read -ra NUMA_NODES <<< "$MYSQL_MEM_NUMA_NODE"
@@ -1441,6 +1515,14 @@ else
         # Check if the variable has two or more values separated by commas
         if [[ $NUM_NODE_COUNT -lt 2 ]]; then
             error_msg "Two or more NUMA node must be specified with (-M) with the '${MEM_ENVIRONMENT}' (-e) option"
+            print_usage
+            exit 1
+        fi
+    elif [[ "$MEM_ENVIRONMENT" == "numapreferred" ]]
+    then
+        # Check if the value is a single integer
+        if ! [[ "$MYSQL_MEM_NUMA_NODE" =~ ^[0-9]+$ ]]; then
+	    error_msg "A single NUMA node must be specified with (-M) when using the '${MEM_ENVIRONMENT}' (-e) option"
             print_usage
             exit 1
         fi
@@ -1494,9 +1576,6 @@ log_stdout_stderr "${OUTPUT_PATH}"
 display_start_info "$*"
 
 # Define the array of functions to call in the correct order
-# functions=("check_selinux_enforce" "check_mysql_data_dir" "check_cgroups" "create_network" "set_numactl_options" "${OPT_FUNCS_BEFORE}" "create_sysbench_container_image" "start_sysbench_containers" "check_my_cnf_dir_exists" "start_mysql_containers" "pause_for_stability" "create_mysql_databases" "prepare_the_database" "get_mysql_config" "warm_the_database" "run_the_benchmark" "cleanup_database" "get_container_logs" "stop_containers" "remove_containers" "${OPT_FUNCS_AFTER}")
-
-# Define the array of functions to call in the correct order
 functions=("check_selinux_enforce" "check_mysql_data_dir" "check_cgroups" "create_network" "set_numactl_options" "kernel_tpp_feature")
 
 # Add functions from OPT_FUNCS_BEFORE if it is set
@@ -1522,7 +1601,7 @@ for function in "${functions[@]}"; do
     # Check if an error occurred
     if [ $return_value -ne 0 ]; then
         error_msg "An error occurred in '$function'. Exiting."
-        goto out
+        break
     fi
 done
 

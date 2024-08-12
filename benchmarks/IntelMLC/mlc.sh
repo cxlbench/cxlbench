@@ -10,39 +10,39 @@ pushd $PWD &> /dev/null
 # Global Variables
 #################################################################################################
 
-VERSION="0.1.1"					# version string
+VERSION="0.2.0"             # version string
 
-SCRIPT_NAME=${0##*/}				# Name of this script
-SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]:-$0}"; )" &> /dev/null && pwd 2> /dev/null; )"	# Provides the full directory name of the script no matter where it is being called from
+SCRIPT_NAME=${0##*/}        # Name of this script
+SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]:-$0}"; )" &> /dev/null && pwd 2> /dev/null; )"  # Provides the full directory name of the script no matter where it is being called from
 
 OUTPUT_PATH="./${SCRIPT_NAME}.$(hostname).$(date +"%m%d-%H%M")" # output directory created by this script
-STDOUT_LOG_FILE="${SCRIPT_NAME}.log"			# Filename to save STDOUT and STDERR
+STDOUT_LOG_FILE="${SCRIPT_NAME}.log"      # Filename to save STDOUT and STDERR
 
-CXLCLI=("$(command -v cxl)")			  # Path to cxl, use -c option to specify the location of the cxl binary
-NUMACTL=("$(command -v numactl)")		# Path to numactl
+CXLCLI=("$(command -v cxl)")        # Path to cxl, use -c option to specify the location of the cxl binary
+NUMACTL=("$(command -v numactl)")   # Path to numactl
 LSCPU=("$(command -v lscpu)")       # Path to lscpu
 AWK=("$(command -v awk)")           # Path to awk
-GREP=("$(command -v grep)")			    # Path to grep
-SED=("$(command -v sed)")			      # Path to sed
-TPUT=("$(command -v tput)")			    # Path to tput
-CP=("$(command -v cp)")				      # Path to cp
+GREP=("$(command -v grep)")         # Path to grep
+SED=("$(command -v sed)")           # Path to sed
+TPUT=("$(command -v tput)")         # Path to tput
+CP=("$(command -v cp)")             # Path to cp
 FIND=("$(command -v find)")         # Path to find
 TEE=("$(command -v tee)")           # Path to tee
 TAIL=("$(command -v tail)")         # Path to tail
 MLC=("$(command -v mlc)")           # Path to Intel MLC
 
 # Command line arguments
-socket=0					            # default, -s argument to specify the CPU socket to run MLC
-OPT_VERBOSITY=0					      # default, -v, -vv, -vvv option to increase verbose output
-OPT_LOADED_LATENCY=false			# default, -l to override and perform loaded latency testing
-OPT_X=""  					          # default, -X to override and use all cpu threads on all cores
-OPT_Z="-Z"  					        # default, -Z to override and AVX-512 64-byte load/store instructions
-OPT_CXL_NUMA_NODE=-1				  # default, -c to override and use the user specified NUMA Node backed by CXL
-OPT_DRAM_NUMA_NODE=-1				  # default, -d to override and use the user specified NUMA Node backed by DRAM
+socket=                       # -s argument to specify the CPU socket to run MLC, default OPT_DRAM_NUMA_NODE
+OPT_VERBOSITY=0               # default, -v, -vv, -vvv option to increase verbose output
+OPT_LOADED_LATENCY=false      # default, -l to override and perform loaded latency testing
+OPT_X=""                      # default, -X to override and use all cpu threads on all cores
+OPT_Z="-Z"                    # default, -Z to override and AVX-512 64-byte load/store instructions
+OPT_CXL_NUMA_NODE=-1          # default, -c to override and use the user specified NUMA Node backed by CXL
+OPT_DRAM_NUMA_NODE=-1         # default, -d to override and use the user specified NUMA Node backed by DRAM
 
 # MLC Options
 SAMPLE_TIME=30                # default, -t argument to MLC
-BUF_SZ=40000					        # MLC Buffer Size
+BUF_SZ=40000                  # MLC Buffer Size
 
 # Global Variables
 NUMA_NODES_IN_SYSTEM=0        # Number of NUMA Nodes in the host
@@ -182,17 +182,17 @@ function process_args() {
           echo "Error: Invalid value for '-c'. Requires an integer value."
           exit 1
         fi
-	      ;;
+        ;;
       d) # Set the DRAM NUMA Node ID to test
         OPT_DRAM_NUMA_NODE=$OPTARG
         # Validate input is a numeric value
-	      if ! [[ $OPT_DRAM_NUMA_NODE =~ ^[0-9]+$ ]]; then
+        if ! [[ $OPT_DRAM_NUMA_NODE =~ ^[0-9]+$ ]]; then
           echo "Error: Invalid value for '-d'. Requires an integer value."
-	        exit 1
+          exit 1
         fi
-	      ;;
+        ;;
       m) # Set the location of the mlc binary 
-	      MLC=$OPTARG
+        MLC=$OPTARG
         ;;
       s) # Specify which CPU socket to execute MLC on
         socket=$OPTARG
@@ -240,6 +240,10 @@ function process_args() {
    if [[ $OPT_CXL_NUMA_NODE -eq -1 ]] && [[ $OPT_DRAM_NUMA_NODE -eq -1 ]]; then
      echo "Error! You must provide either the '-c' or '-d' arguments with values"
      exit 1
+   fi
+
+   if [ -z "$socket" ]; then
+     socket=$OPT_DRAM_NUMA_NODE
    fi
 }
 
@@ -571,11 +575,11 @@ function idle_latency() {
 # W8 =  1 read and 1 non-temporal write
 # W9 =  3 reads and 1 non-temporal write
 # W10 = 2 reads and 1 non-temporal write (similar to stream triad)
-# 	 (same as -W7 but the 2 reads are from 2 different buffers while those 2
-# 	 reads are from a single buffer on –W7)
+#    (same as -W7 but the 2 reads are from 2 different buffers while those 2
+#    reads are from a single buffer on –W7)
 # W11 = 3 reads and 1 write
-# 	 (same as –W3 but the 2 reads are from 2 different buffers while those 2
-# 	 reads are from a single buffer on –W3)
+#    (same as –W3 but the 2 reads are from 2 different buffers while those 2
+#    reads are from a single buffer on –W3)
 # W12 = 4 reads and 1 write
 
 # Arg0: DRAM or CXL NUMA Node to test
@@ -659,7 +663,7 @@ function bandwidth_ramp() {
         # Extract the Latency and Bandwidth results from the log file
         LatencyResult=$(tail -n 4 "${LOG_FILE}" | ${GREP} '00000' | awk '{print $2}')
         BandwidthResult=$(tail -n 4 "${LOG_FILE}" | ${GREP} '00000' | awk '{print $3}')
-        echo "DRAM:CXL,${ratiostr},${MEM_NUMA_NODE},${c},${rdwr},${access},${LatencyResult},${BandwidthResult}" >> "${OUTPUT_PATH}/bw_ramp.results.node_${MEM_NUMA_NODE}.${rdwr}.${access}.${ratiostr}.csv"
+        echo "DRAM:CXL,\"${ratiostr}\",${MEM_NUMA_NODE},${c},${rdwr},${access},${LatencyResult},${BandwidthResult}" >> "${OUTPUT_PATH}/bw_ramp.results.node_${MEM_NUMA_NODE}.${rdwr}.${access}.${ratiostr}.csv"
       done
     done
   done
@@ -718,7 +722,7 @@ function bandwidth_ramp_interleave() {
           LatencyResult=$(tail -n 4 "${LOG_FILE}" | ${GREP} '00000' | awk '{print $2}')
           BandwidthResult=$(tail -n 4 "${LOG_FILE}" | ${GREP} '00000' | awk '{print $3}')
           ratiostr="$(( 100 - ratio )):${ratio}"
-          echo "DRAM:CXL,${ratiostr},${c},${rdwr},${access},${LatencyResult},${BandwidthResult}" >> "${OUTPUT_PATH}/bw_ramp_interleave.results.node_${DRAM_NUMA_NODE}.node_${CXL_NUMA_NODE}.${rdwr}.${access}.${ratio}.csv"
+          echo "DRAM:CXL,\"${ratiostr}\",${c},${rdwr},${access},${LatencyResult},${BandwidthResult}" >> "${OUTPUT_PATH}/bw_ramp_interleave.results.node_${DRAM_NUMA_NODE}.node_${CXL_NUMA_NODE}.${rdwr}.${access}.${ratio}.csv"
         done 
       done
     done
