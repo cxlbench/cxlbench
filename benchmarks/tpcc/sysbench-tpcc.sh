@@ -67,7 +67,8 @@ OPT_FUNCS_AFTER=""                    # Optional functions that get called after
 #################################################################################################
 
 # THis function will be called if a user sends a SIGINT (Ctrl-C)
-function ctrl_c() {
+function ctrl_c()
+{
   info_msg "Received CTRL+C - aborting"
   stop_containers
   remove_containers
@@ -81,14 +82,16 @@ trap ctrl_c SIGINT
 # Implementing 'goto' functionality
 # Usage: goto end
 # Labels/Tags are '# end: #', or '#end:#' or '# end: # This is a comment'
-function goto() {
+function goto()
+{
   label=$1
   cmd=$(sed -En "/^[[:space:]]*#[[:space:]]*$label:[[:space:]]*#/{:a;n;p;ba};" "$0")
   eval "$cmd"
   exit
 }
 
-function init() {
+function init()
+{
     # Create the output directory
     init_outputs
     # Configure the innodb buffer pool size
@@ -99,7 +102,8 @@ function init() {
 # We use either the defaults or user specified paths
 # args: none
 # return: 0=success, 1=error
-function verify_cmds() {
+function verify_cmds()
+{
     local err_state=false
 
     for CMD in numactl lscpu lspci grep cut sed awk podman dstat; do
@@ -175,13 +179,14 @@ function print_usage()
 # Creates a spinner animation to show the script is working in the background
 # args: none
 # return: none
-function spin() {
+function spin()
+{
     local -a marks=( '/' '-' '\' '|' )
     local spin_pid=$1
 
     while [[ true ]]; do
         printf '%s\r' "${marks[i++ % ${#marks[@]}]}"
-        sleep 0.1
+        sleep 1
         #if ! kill -0 "$spin_pid" &> /dev/null; then
         #    return
         #fi
@@ -602,6 +607,42 @@ function create_mysql_databases()
     fi
 }
 
+# Reenable REDO logging.  Should be used to speed up the prepare and clean up operations.
+# args: none
+function enable_redo_logs()
+{
+    # Enable the REDO LOG
+    for i in $(seq 1 ${PM_INSTANCES});
+    do
+        # Reenable the REDO Log for the prepare to speed up the inserttion of data
+        if podman exec -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD}" -i mysql${i} mysql -uroot -e "ALTER INSTANCE ENABLE INNODB REDO_LOG;" > /dev/null 2>> "${OUTPUT_PATH}/podman_exec_enable_innodb_redo_log.${i}.err"
+        then
+            info_msg "Successfully enabled the REDO LOG"
+        else
+            # This is not fatal, but report it.
+            warn_msg "Failed to enable the REDO LOG. See '${OUTPUT_PATH}/podman_exec_enable_innodb_redo_log.${i}.err' for more information."
+        fi
+    done
+}
+
+# Temporarily disable REDO logging.  Should be used to speed up the prepare and clean up operations.
+# args: none
+function disable_redo_log()
+{
+    for i in $(seq 1 ${PM_INSTANCES});
+    do
+        # Temporarily disable the REDO Log for the prepare to speed up the inserttion of data
+        if podman exec -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD}" -i mysql${i} mysql -uroot -e "ALTER INSTANCE DISABLE INNODB REDO_LOG;" > /dev/null 2>> "${OUTPUT_PATH}/podman_exec_disable_innodb_redo_log.${i}.err"
+        then
+            info_msg "Successfully disabled the REDO LOG"
+        else
+            # This is not fatal, but report it.
+            warn_msg "Failed to disable the REDO LOG. See '${OUTPUT_PATH}/podman_exec_disable_innodb_redo_log.${i}.err' for more information."
+        fi
+    done
+}
+
+
 # Run the 'tpcc.lua prepare' command inside the Sysbench container
 # args: none
 # return: 0=success, 1=error
@@ -622,19 +663,11 @@ function prepare_the_database()
 
     # Prepare the database
     info_msg "Preparing the database(s). This will take some time. Please be patient..."
+    disable_redo_log
     for i in $(seq 1 ${PM_INSTANCES});
     do
-        # Temporarily disable the REDO Log for the prepare to speed up the inserttion of data
-        if podman exec -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD}" -i mysql${i} mysql -uroot -e "ALTER INSTANCE DISABLE INNODB REDO_LOG;" > /dev/null 2> "${OUTPUT_PATH}/podman_exec_disable_innodb_redo_log.err"
-        then
-            info_msg "Successfully disabled the REDO LOG"
-        else
-            # This is not fatal, but report it.
-            warn_msg "Failed to disable the REDO LOG. See '${OUTPUT_PATH}/podman_exec_disable_innodb_redo_log.err' for more information."
-        fi
-
         info_msg " ... Preparing database on mysql${i} ..."
-        SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/4/" | sed "s/RUNTIME/60/" )
+        SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/${CLIENT_CPU_LIMIT}/" | sed "s/RUNTIME/60/" )
 
         podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS prepare" &> ${OUTPUT_PATH}/${OUTPUT_PREFIX}prepare.${i}.log &
         pids[${i}-1]=$!
@@ -656,19 +689,7 @@ function prepare_the_database()
 
     kill $spin_pid &> /dev/null
 
-    # Enable the REDO LOG
-    for i in $(seq 1 ${PM_INSTANCES});
-    do
-        # Temporarily disable the REDO Log for the prepare to speed up the inserttion of data
-        if podman exec -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD}" -i mysql${i} mysql -uroot -e "ALTER INSTANCE ENABLE INNODB REDO_LOG;" > /dev/null 2> "${OUTPUT_PATH}/podman_exec_enable_innodb_redo_log.err"
-        then
-            info_msg "Successfully enabled the REDO LOG"
-        else
-            # This is not fatal, but report it.
-            warn_msg "Failed to enable the REDO LOG. See '${OUTPUT_PATH}/podman_exec_enable_innodb_redo_log.err' for more information."
-        fi
-    done
-
+    enable_redo_logs
     # Calculate the time to prepare the database
     duration=$(calc_time_duration ${start_time})
     info_msg "Prepare completed in ${duration}"
@@ -704,7 +725,7 @@ function warm_the_database()
     for i in $(seq 1 ${PM_INSTANCES});
     do
         info_msg " ... Warming database on mysql${i} ... "
-        SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/4/" | sed "s/RUNTIME/${SYSBENCH_WARMTIME}/" )
+        SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/${CLIENT_CPU_LIMIT}/" | sed "s/RUNTIME/${SYSBENCH_WARMTIME}/" )
         podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS run" > ${OUTPUT_PATH}/${OUTPUT_PREFIX}warmup.${i}.log &
         pids[${i}-1]=$!
     done
@@ -743,7 +764,8 @@ function warm_the_database()
 # Example:
 #     arg1 = 1024
 #     Returned sequence = "1 2 4 8 16 32 64 128 256 512 1024"
-generate_worker_thread_sequence() {
+generate_worker_thread_sequence()
+{
     max_value=$1
     seq=""
 
@@ -864,6 +886,7 @@ function cleanup_database()
 {
     local pids
     local spin_pid
+    local start_time        # Start time in epoch seconds
     local err_state=false
 
     if [ -z ${CLEANUP} ];
@@ -871,10 +894,13 @@ function cleanup_database()
         return 0
     fi
 
+    start_time=$(date +%s)
+
     info_msg "Starting cleanup of the MySQL database..."
+    disable_redo_log
     for i in $(seq 1 ${PM_INSTANCES});
     do
-        SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/4/" | sed "s/RUNTIME/600/" )
+        SYSBENCH_OPTS=$(echo ${SYSBENCH_OPTS_TEMPLATE} | sed "s/INSTANCE/${i}/" | sed "s/TABLES/${TABLES}/" | sed "s/SCALE/${SCALE}/" | sed "s/THREADS/${CLIENT_CPU_LIMIT}/" | sed "s/RUNTIME/600/" )
         podman exec -e SYSBENCH_OPTS="$SYSBENCH_OPTS" sysbench${i} /bin/sh -c "/usr/local/share/sysbench/tpcc.lua $SYSBENCH_OPTS cleanup" &> ${OUTPUT_PATH}/${OUTPUT_PREFIX}cleanup.${i}.log &
         # Check for failure here, bail out and clean up
         pids[${i}-1]=$!
@@ -897,13 +923,10 @@ function cleanup_database()
 
     kill $spin_pid &> /dev/null
 
-    # Remove the MySQL Data Directory
-    if ! rm -rf "/${MYSQL_DATA_DIR}/mysql-$i" >/dev/null 2>&1
-    then
-        error_msg "Failed to remove '/${MYSQL_DATA_DIR}/mysql-$i'"
-    fi
-
-    info_msg "MySQL Cleanup completed"
+    enable_redo_log
+    # Calculate the time to clean the database
+    duration=$(calc_time_duration ${start_time})
+    info_msg "MySQL Cleanup completed in ${duration}"
 
     if ${err_state}; then
         return 1
@@ -915,7 +938,8 @@ function cleanup_database()
 # Get the container logs
 # args: none
 # return: 0=success
-function get_container_logs() {
+function get_container_logs()
+{
     info_msg "Collecting container logs..."
 
     for i in $(seq 1 ${PM_INSTANCES});
@@ -941,7 +965,8 @@ function get_container_logs() {
 # Generate a snapshot of the MySQL settings and my.cnf
 # args: none
 # return: 0=success
-function get_mysql_config() {
+function get_mysql_config()
+{
     info_msg "Collecting 'my.cnf'"
 
     # Copy the my.cnf file to the output directory
@@ -991,7 +1016,8 @@ function stop_containers()
     info_msg "Stopping the MySQL and SysBench containers..."
     for i in $(seq 1 ${PM_INSTANCES});
     do
-        if podman stop mysql${i} &> /dev/null
+        # Wait 20 seconds to stop the container; Larger databases take a bit of time to cleanup and stop
+        if podman stop -t 20 mysql${i} &> /dev/null
         then
             info_msg "... Container 'mysql${i}' stopped successfully"
         else
@@ -1052,7 +1078,8 @@ function remove_containers()
 # This function will check the user has the necessary permissions in the cgroups configuration
 # args: none
 # return: 0=success, 1=error
-function check_cgroups() {
+function check_cgroups()
+{
     if [[ ! -f "/etc/systemd/system/user@.service.d/delegate.conf" ]]; then
         error_msg "The file '/etc/systemd/system/user@.service.d/delegate.conf' does not exist. Follow the procedure in the README.md for further instructions. Exiting"
         return 1
@@ -1069,7 +1096,8 @@ function check_cgroups() {
 # Check if the MySQL data directory on host exists and is writable by this user
 # args: none
 # return: 0=success, 1=error
-function check_mysql_data_dir() {
+function check_mysql_data_dir()
+{
     if [ -d "${MYSQL_DATA_DIR}" ];
     then
         if [ -w "${MYSQL_DATA_DIR}" ]; then
@@ -1088,7 +1116,8 @@ function check_mysql_data_dir() {
 # Check the MYSQL config directory that hosts the my.cnf exists before starting the container(s)
 # args: none
 # return: 0=success, 1=error
-function check_my_cnf_dir_exists() {
+function check_my_cnf_dir_exists()
+{
     if [ ! -f ${MYSQL_CONF} ];
     then
         error_msg " '${MYSQL_CONF}' does not exist. Please create the mysql configuration file and retry. Exiting"
@@ -1103,7 +1132,8 @@ function check_my_cnf_dir_exists() {
 # arg1: start time in seconds/epoch
 # arg2: end time in seconds/epoch. If $2 is not provided, now() is used
 # return: String with calculated difference in days, hours, mins, secs
-function calc_time_duration() {
+function calc_time_duration()
+{
     local STIME=$1      # Start Time
     local ETIME=$2      # End Time. Defaults to now() if not provided
     local DURATION=0    # ETIME-STIME
@@ -1150,7 +1180,8 @@ function calc_time_duration() {
 #   initialization script inside the docker container to fail with permission
 #   errors. Warn the user and have them temporarily disable it for the purposes
 #   of benchmarking.
-function check_selinux_enforce() {
+function check_selinux_enforce()
+{
     if command -v getenforce > /dev/null || command -v sestatus > /dev/null; then
         if [ "$(getenforce)" == "Enforcing" ]; then
             error_msg "SELinux is in Enforcing mode. The database may have permission problems."
@@ -1169,7 +1200,8 @@ function check_selinux_enforce() {
 # Check if Kernel Transparent Page Placement is Enabled or Disabled
 # args: None
 # return: True (1) or False (0)
-function is_kernel_tpp_enabled() {
+function is_kernel_tpp_enabled()
+{
     local numa_balancing=0
     local demotion_enabled=0
     local result=0
@@ -1233,7 +1265,8 @@ function is_kernel_tpp_enabled() {
 # Enable the Kernel TPP feature. Must be root to do this!
 # args: none
 # returns: nothing
-function enable_kernel_tpp() {
+function enable_kernel_tpp()
+{
     local err_state=false 
 
     if echo 2 > /proc/sys/kernel/numa_balancing;
@@ -1266,7 +1299,8 @@ function enable_kernel_tpp() {
 # Disable the Kernel TPP feature. Must be root to do this!
 # args: none
 # returns: nothing
-function disable_kernel_tpp() {
+function disable_kernel_tpp()
+{
     local err_state=false 
 
     if echo 1 > /proc/sys/kernel/numa_balancing;
@@ -1295,7 +1329,8 @@ function disable_kernel_tpp() {
 # Check if the Kernel TPP feature is required or not.
 # The user can explicityly use TPP with (-e kerneltpp)
 # Kernel TPP should be disabled for all other tests
-function kernel_tpp_feature() {
+function kernel_tpp_feature()
+{
     # Linux Kernel Transparent Page Placement (aka Tiering)
     # Debug statements
     if [[ ("$MEM_ENVIRONMENT" == "kerneltpp" || "$MEM_ENVIRONMENT" == "tpp") ]]
@@ -1341,7 +1376,8 @@ function kernel_tpp_feature() {
 # Process the TPCC results to CSV files, one per MySQL container
 # args: none
 # returns: nothing
-function process_tpcc_results_to_csv() {
+function process_tpcc_results_to_csv()
+{
     cd "${OUTPUT_PATH}"
     for i in $(seq 1 ${PM_INSTANCES});
     do
