@@ -544,14 +544,22 @@ function pause_for_stability() {
         local elapsed_seconds=0
         while true; do
             log_output=$(podman logs "$container_name" 2>&1 | tail -1)
+            container_status=$(podman inspect --format='{{.State.Status}}' "$container_name")
 
+            # Case(s) where the container is not in a good state
+            if [[ "$container_status" != "running" ]]; then
+                echo
+                error_msg "Error: Container $container_name has exited or does not exist."
+                return 1
+            fi
+
+            # Container is healthy and running
             if [[ "$log_output" == *"$expected_message"* ]]; then
                 echo
                 info_msg "MySQL is ready."
                 break
             else
                 echo -ne "${STR_INFO} waiting for containers to initialize. Elapsed: ${elapsed_seconds}s.\033[0K\r"
-
                 sleep 1
                 ((elapsed_seconds++))
             fi
