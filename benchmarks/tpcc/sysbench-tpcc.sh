@@ -157,13 +157,13 @@ function print_usage()
     echo "Example 1: Runs a single MySQL server on NUMA 0 and a single SysBench instance on NUMA Node1, "
     echo "  prepares the database, runs the benchmark from 1..1000 threads in powers of two, "
     echo "  and removes the database and containers when complete. "
-    echo "  The server and client CPU, Memory sizes are default. " 
+    echo "  The server and client CPU, Memory sizes are default. "
     echo " "
     echo "    $ ./${SCRIPT_NAME} -e dram -o test -i 1 -t 10 -W 1000  -C 0 -M 0 -S 1 -p -w -r -c"
     echo " "
     echo "Example 2: Created the MySQL and Sysbench containers, runs the MySQL container on NUMA Node 0, the "
     echo "  Sysbench container on NUMA Node 1, then prepares the database and exits. The containers are left running."
-    echo "  The server and client CPU, Memory sizes are default. " 
+    echo "  The server and client CPU, Memory sizes are default. "
     echo " "
     echo "    $ ./${SCRIPT_NAME} -e dram -o test -C 0 -M 0 -S 1 -p"
     echo " "
@@ -534,39 +534,66 @@ function start_sysbench_containers()
 # args: none
 # return: 0=success, 1=error
 function pause_for_stability() {
-    for i in $(seq 1 ${PM_INSTANCES});
-    do
-        container_name="mysql${i}"
-        expected_message="X Plugin ready for connections. Bind-address: '::' port: 33060, socket: /var/run/mysqld/mysqlx.sock"
+    for i in $(seq 1 ${PM_INSTANCES}); do
+        current_time=$(date '+%Y-%m-%d %H:%M:%S')
+        info_msg "Started waiting for container 'mysql${i}' to be healthy at ${current_time}"
+    done
 
-        info_msg "Waiting for $container_name to be ready..."
+    local unhealthy_containers=()
+    local elapsed_seconds=0
+    local all_healthy=false
 
-        local elapsed_seconds=0
-        while true; do
+    while [ "$all_healthy" = false ]; do
+        all_healthy=true  # Assume all containers are healthy unless proven otherwise
+
+        for i in $(seq 1 ${PM_INSTANCES}); do
+            container_name="mysql${i}"
+            expected_message="X Plugin ready for connections. Bind-address: '::' port: 33060, socket: /var/run/mysqld/mysqlx.sock"
+
+            # Skip containers that have already been marked as unhealthy
+            if [[ " ${unhealthy_containers[@]} " =~ " ${container_name} " ]]; then
+                continue
+            fi
+
             log_output=$(podman logs "$container_name" 2>&1 | tail -1)
             container_status=$(podman inspect --format='{{.State.Status}}' "$container_name")
 
             # Case(s) where the container is not in a good state
             if [[ "$container_status" != "running" ]]; then
-                echo
                 error_msg "Error: Container $container_name has exited or does not exist."
-                return 1
+                unhealthy_containers+=("$container_name")
+                all_healthy=false
+                continue
             fi
 
             # Container is healthy and running
             if [[ "$log_output" == *"$expected_message"* ]]; then
-                echo
-                info_msg "MySQL is ready."
-                break
+                info_msg "MySQL $container_name is ready."
             else
-                echo -ne "${STR_INFO} waiting for containers to initialize. Elapsed: ${elapsed_seconds}s.\033[0K\r"
-                sleep 1
-                ((elapsed_seconds++))
+                all_healthy=false
             fi
         done
+
+        if [ "$all_healthy" = false ]; then
+            sleep 1
+            ((elapsed_seconds++))
+        fi
     done
 
-    info_msg "Done waiting for MySQL container(s) to start"
+    if [ ${#unhealthy_containers[@]} -ne 0 ]; then
+        error_msg "The following containers are not healthy:"
+        for container in "${unhealthy_containers[@]}"; do
+            error_msg "- $container"
+        done
+        error_msg "In order to do another fresh run, do the following steps (only 1 instance as an example, this benchmark run had $PM_INSTANCES):"
+        error_msg "- Stop and remove all sysbench containers, ex. 'podman stop sysbench1 && podman rm sysbench1'"
+        error_msg "- Remove all mysql containers, ex. 'podman rm mysql1'"
+        error_msg "- Delete the data volume mounted for all mysql containers, ex. 'sudo rm -rf /data/mysql1'"
+        return 1
+    else
+        info_msg "All containers are healthy."
+        return 0
+    fi
 }
 
 # Create the test MySQL database inside the MySQL container
@@ -1289,7 +1316,7 @@ function is_kernel_tpp_enabled()
 # returns: nothing
 function enable_kernel_tpp()
 {
-    local err_state=false 
+    local err_state=false
 
     if echo 2 > /proc/sys/kernel/numa_balancing;
     then
@@ -1323,7 +1350,7 @@ function enable_kernel_tpp()
 # returns: nothing
 function disable_kernel_tpp()
 {
-    local err_state=false 
+    local err_state=false
 
     if echo 1 > /proc/sys/kernel/numa_balancing;
     then
