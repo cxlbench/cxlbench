@@ -1128,8 +1128,8 @@ function delete_container_data()
 {
     for i in $(seq 1 ${PM_INSTANCES});
     do
-        info_msg "Removing mysql${i} data at $MYSQL_DATA_DIR/mysql${i}"
-        sudo rm -rf $MYSQL_DATA_DIR/mysql${i}
+        info_msg "Removing mysql${i} data at ${MYSQL_DATA_DIR}/mysql${i}"
+        sudo rm -rf ${MYSQL_DATA_DIR}/mysql${i}
     done
 }
 
@@ -1686,6 +1686,7 @@ for function in "${functions[@]}"; do
         delete_container_data
 
         error_msg "An error occurred in '$function'. Exiting."
+        error_msg "See container logs at '${OUTPUT_PATH}/${OUTPUT_PREFIX}mysql.*.log' for details"
         break
     fi
 done
