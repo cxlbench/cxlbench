@@ -157,13 +157,13 @@ function print_usage()
     echo "Example 1: Runs a single MySQL server on NUMA 0 and a single SysBench instance on NUMA Node1, "
     echo "  prepares the database, runs the benchmark from 1..1000 threads in powers of two, "
     echo "  and removes the database and containers when complete. "
-    echo "  The server and client CPU, Memory sizes are default. " 
+    echo "  The server and client CPU, Memory sizes are default. "
     echo " "
     echo "    $ ./${SCRIPT_NAME} -e dram -o test -i 1 -t 10 -W 1000  -C 0 -M 0 -S 1 -p -w -r -c"
     echo " "
     echo "Example 2: Created the MySQL and Sysbench containers, runs the MySQL container on NUMA Node 0, the "
     echo "  Sysbench container on NUMA Node 1, then prepares the database and exits. The containers are left running."
-    echo "  The server and client CPU, Memory sizes are default. " 
+    echo "  The server and client CPU, Memory sizes are default. "
     echo " "
     echo "    $ ./${SCRIPT_NAME} -e dram -o test -C 0 -M 0 -S 1 -p"
     echo " "
@@ -529,22 +529,68 @@ function start_sysbench_containers()
     fi
 }
 
-# The MySQL and Sysbench may take a few seconds to completely start, espceially on the first run
-# This function adds a simple delay to the script to give the containers time to complete their startup sequence
+# The MySQL and Sysbench containers may take a few seconds to completely start, especially on the first run.
+# This function watches the podman logs for all MySQL containers, to make sure they have all started before returning.
 # args: none
-# return: none
-function pause_for_stability()
-{
-    local seconds
-
-    seconds=300
-    total_seconds=$seconds
-    while [ $seconds -gt 0 ]; do
-        echo -ne "${STR_INFO} Pausing for $total_seconds seconds to give the containers time to initialize ... $seconds\033[0K\r"
-        sleep 1
-        seconds=$((seconds-1))
+# return: 0=success, 1=error
+function pause_for_stability() {
+    for i in $(seq 1 ${PM_INSTANCES}); do
+        current_time=$(date '+%Y-%m-%d %H:%M:%S')
+        info_msg "Started waiting for container 'mysql${i}' to be healthy at ${current_time}"
     done
-    echo
+
+    local unhealthy_containers=()
+    local elapsed_seconds=0
+    local all_healthy=false
+
+    while [ "$all_healthy" = false ]; do
+        all_healthy=true  # Assume all containers are healthy unless proven otherwise
+
+        for i in $(seq 1 ${PM_INSTANCES}); do
+            container_name="mysql${i}"
+            expected_message="X Plugin ready for connections. Bind-address: '::' port: 33060, socket: /var/run/mysqld/mysqlx.sock"
+
+            # Skip containers that have already been marked as unhealthy
+            if [[ " ${unhealthy_containers[@]} " =~ " ${container_name} " ]]; then
+                continue
+            fi
+
+            log_output=$(podman logs "$container_name" 2>&1 | tail -1)
+            container_status=$(podman inspect --format='{{.State.Status}}' "$container_name")
+
+            # Case(s) where the container is not in a good state
+            if [[ "$container_status" != "running" ]]; then
+                error_msg "Container $container_name is in an unhealthy state."
+                unhealthy_containers+=("$container_name")
+                all_healthy=false
+                continue
+            fi
+
+            # Container is healthy and running
+            if [[ "$log_output" == *"$expected_message"* ]]; then
+                info_msg "MySQL $container_name is ready."
+            else
+                all_healthy=false
+            fi
+        done
+
+        if [ "$all_healthy" = false ]; then
+            sleep 1
+            ((elapsed_seconds++))
+        fi
+    done
+
+    if [ ${#unhealthy_containers[@]} -ne 0 ]; then
+        get_container_logs
+        error_msg "The following containers are not healthy:"
+        for container in "${unhealthy_containers[@]}"; do
+            error_msg "- $container"
+        done
+        return 1
+    else
+        info_msg "All containers are healthy."
+        return 0
+    fi
 }
 
 # Create the test MySQL database inside the MySQL container
@@ -1075,6 +1121,18 @@ function remove_containers()
     fi
 }
 
+# Remove the MySQL volume data located at /data/mysql${i}
+# args: none
+# return: nothing
+function delete_container_data()
+{
+    for i in $(seq 1 ${PM_INSTANCES});
+    do
+        info_msg "Removing mysql${i} data at ${MYSQL_DATA_DIR}/mysql${i}"
+        sudo rm -rf ${MYSQL_DATA_DIR}/mysql${i}
+    done
+}
+
 # This function will check the user has the necessary permissions in the cgroups configuration
 # args: none
 # return: 0=success, 1=error
@@ -1267,7 +1325,7 @@ function is_kernel_tpp_enabled()
 # returns: nothing
 function enable_kernel_tpp()
 {
-    local err_state=false 
+    local err_state=false
 
     if echo 2 > /proc/sys/kernel/numa_balancing;
     then
@@ -1278,7 +1336,7 @@ function enable_kernel_tpp()
         # Disable Kernel TPP after the benchmarks complete
         OPT_FUNCS_AFTER="disable_kernel_tpp"
     fi
-    
+
     if echo 1 > /sys/kernel/mm/numa/demotion_enabled;
     then
         error_msg "Failed to enable Kernel Memory Tiering Page Demotion"
@@ -1301,7 +1359,7 @@ function enable_kernel_tpp()
 # returns: nothing
 function disable_kernel_tpp()
 {
-    local err_state=false 
+    local err_state=false
 
     if echo 1 > /proc/sys/kernel/numa_balancing;
     then
@@ -1310,7 +1368,7 @@ function disable_kernel_tpp()
     else
         info_msg "Successfully enabled Kernel Memory Tiering"
     fi
-    
+
     if echo 0 > /sys/kernel/mm/numa/demotion_enabled;
     then
         error_msg "Failed to enable Kernel Memory Tiering Page Demotion"
@@ -1575,7 +1633,7 @@ fi
 if [ -z ${OUTPUT_PREFIX} ];
 then
     OUTPUT_PREFIX=""
-else 
+else
     # Set the OUTPUT_PREFIX for files
     OUTPUT_PREFIX+="_"
     # Set the OUTPUT_PATH
@@ -1622,7 +1680,13 @@ for function in "${functions[@]}"; do
 
     # Check if an error occurred
     if [ $return_value -ne 0 ]; then
+        get_container_logs
+        stop_containers
+        remove_containers
+        delete_container_data
+
         error_msg "An error occurred in '$function'. Exiting."
+        error_msg "See container logs at '${OUTPUT_PATH}/${OUTPUT_PREFIX}mysql.*.log' for details"
         break
     fi
 done
