@@ -560,7 +560,7 @@ function pause_for_stability() {
 
             # Case(s) where the container is not in a good state
             if [[ "$container_status" != "running" ]]; then
-                error_msg "Error: Container $container_name has exited or does not exist."
+                error_msg "Container $container_name is in an unhealthy state."
                 unhealthy_containers+=("$container_name")
                 all_healthy=false
                 continue
@@ -581,14 +581,11 @@ function pause_for_stability() {
     done
 
     if [ ${#unhealthy_containers[@]} -ne 0 ]; then
+        get_container_logs
         error_msg "The following containers are not healthy:"
         for container in "${unhealthy_containers[@]}"; do
             error_msg "- $container"
         done
-        error_msg "In order to do another fresh run, do the following steps (only 1 instance as an example, this benchmark run had $PM_INSTANCES):"
-        error_msg "- Stop and remove all sysbench containers, ex. 'podman stop sysbench1 && podman rm sysbench1'"
-        error_msg "- Remove all mysql containers, ex. 'podman rm mysql1'"
-        error_msg "- Delete the data volume mounted for all mysql containers, ex. 'sudo rm -rf /data/mysql1'"
         return 1
     else
         info_msg "All containers are healthy."
@@ -1122,6 +1119,18 @@ function remove_containers()
     else
         return 0
     fi
+}
+
+# Remove the MySQL volume data located at /data/mysql${i}
+# args: none
+# return: nothing
+function delete_container_data()
+{
+    for i in $(seq 1 ${PM_INSTANCES});
+    do
+        info_msg "Removing mysql${i} data at $MYSQL_DATA_DIR/mysql${i}"
+        sudo rm -rf $MYSQL_DATA_DIR/mysql${i}
+    done
 }
 
 # This function will check the user has the necessary permissions in the cgroups configuration
@@ -1671,6 +1680,11 @@ for function in "${functions[@]}"; do
 
     # Check if an error occurred
     if [ $return_value -ne 0 ]; then
+        get_container_logs
+        stop_containers
+        remove_containers
+        delete_container_data
+
         error_msg "An error occurred in '$function'. Exiting."
         break
     fi
