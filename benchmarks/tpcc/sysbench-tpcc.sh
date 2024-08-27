@@ -542,20 +542,19 @@ function pause_for_stability() {
     local unhealthy_containers=()
     local elapsed_seconds=0
     local all_healthy=false
+    local expected_message="X Plugin ready for connections. Bind-address: '::' port: 33060, socket: /var/run/mysqld/mysqlx.sock"
 
     while [ "$all_healthy" = false ]; do
         all_healthy=true  # Assume all containers are healthy unless proven otherwise
 
         for i in $(seq 1 ${PM_INSTANCES}); do
             container_name="mysql${i}"
-            expected_message="X Plugin ready for connections. Bind-address: '::' port: 33060, socket: /var/run/mysqld/mysqlx.sock"
 
             # Skip containers that have already been marked as unhealthy
             if [[ " ${unhealthy_containers[@]} " =~ " ${container_name} " ]]; then
                 continue
             fi
 
-            log_output=$(podman logs "$container_name" 2>&1 | tail -1)
             container_status=$(podman inspect --format='{{.State.Status}}' "$container_name")
 
             # Case(s) where the container is not in a good state
@@ -567,9 +566,15 @@ function pause_for_stability() {
             fi
 
             # Container is healthy and running
-            if [[ "$log_output" == *"$expected_message"* ]]; then
-                info_msg "MySQL $container_name is ready."
-            else
+            # Check if the container is ready to accept connections from a client
+            local ready=false
+            while read line; do
+                if [[ "$line" == *"$expected_message"* ]]; then
+                    info_msg "MySQL $container_name is ready."
+                    ready=true
+                fi
+            done <<< $( podman logs mysql${i} 2>&1 )
+            if [[ "$ready" == false ]]; then
                 all_healthy=false
             fi
         done
@@ -969,7 +974,7 @@ function cleanup_database()
 
     kill $spin_pid &> /dev/null
 
-    enable_redo_log
+    enable_redo_logs
     # Calculate the time to clean the database
     duration=$(calc_time_duration ${start_time})
     info_msg "MySQL Cleanup completed in ${duration}"
