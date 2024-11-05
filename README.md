@@ -76,10 +76,11 @@ git submodule update --remote
 We welcome contributions to CXLBench! Please read our [CONTRIBUTING.md](./CONTRIBUTING.md) file for guidelines on how to submit issues, feature requests, and pull requests.
 
 ## License
-CXLBench is released under the [MIT License](./LICENSE.md). ![License](https://img.shields.io/badge/license-MIT-blue.svg)
+CXLBench is released under the [GPL-3.0 License](./LICENSE.md). ![GitHub License](https://img.shields.io/github/license/cxlbench/cxlbench)
+This covers our contributions to the project - scripts, etc. If a benchmark uses a 3rd party utility, most do, then that utility is covered by the authors license.
 
 ## Acknowledgments
-We would like to thank the contributors of the following projects, which are included as submodules in this repository:
+We want to thank the contributors of the following projects, which are included as submodules in this repository:
 - [CUDA Examples](https://github.com/drkennetz/cuda_examples) by drkennetz
 - [NVIDIA Bandwidth Test](https://github.com/NVIDIA/nvbandwidth) by NVIDIA
 
