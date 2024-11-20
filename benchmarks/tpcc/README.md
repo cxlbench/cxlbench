@@ -67,19 +67,20 @@ The script requires the following commands and utilities to be installed
 - sed
 - awk
 - podman
+- dstat
 
 To install these prerequsites, use:
 
 **Fedora/CentOS/RHEL**
 
 ```bash
-$ sudo dnf install numactl sed gawk podman util-linux pciutils
+$ sudo dnf install numactl sed gawk podman util-linux pciutils dstat
 ```
 
 **Ubuntu**
 
 ```bash
-$ sudo apt install numactl grep sed gawk podman util-linux pciutils
+$ sudo apt install numactl grep sed gawk podman util-linux pciutils dstat
 ```
 
 ### MySQL Data Directory

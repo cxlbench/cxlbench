@@ -2,7 +2,7 @@
 
 pull down and run the latest container
 ```
-docker pull redis/redis:latest
+docker pull redis:latest
 docker run -it --entrypoint="/bin/bash" redis
 ```
 
@@ -34,7 +34,7 @@ In a separate console, commit the container
 
 ```
 docker container ps
-docker conatiner commit [container-id] redis-numa
+docker container commit [container-id] redis-numa
 ```
 
 # Running the benchmark

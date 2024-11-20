@@ -37,6 +37,8 @@ function display_help {
 
 function run_setup {
 	systemctl start docker
+	docker pull cloudsuite3/movielens-dataset
+	docker create --name ima-data cloudsuite3/movielens-dataset
 }
 
 while getopts "hpc:m:w:d:e:p:o:n:a:z:t:s:x:" opt; do
@@ -139,7 +141,7 @@ mkdir -p results
 run_setup
 
 start_time=$(date +%s%N)
-docker run $PRIVILEGED $MAXMEM $MAXSWAP --ulimit nofile=90000:90000 $CPUSETS_CPU $CPUSETS_MEM --rm --volumes-from data $CONTAINER /data/ml-latest /data/myratings.csv $DMEM $EMEM > results/raw_results.txt
+docker run $PRIVILEGED $MAXMEM $MAXSWAP --ulimit nofile=90000:90000 $CPUSETS_CPU $CPUSETS_MEM --rm --volumes-from ima-data $CONTAINER /data/ml-latest /data/myratings.csv $DMEM $EMEM > results/raw_results.txt
 end_time=$(date +%s%N)
 time_taken=$(echo "scale=9; ($end_time - $start_time)/1000000000" | bc)
 

@@ -31,9 +31,9 @@ docker run -d --privileged -u 11211 -it memcached-numa numactl --interleave=0,2 
 We are going to use memaslap to test our memcached instance, but we'll need to build it since it's not part of the standard build.
 
 ```
-wget https://launchpad.net/libmemcached/1.0/1.0.16/+download/libmemcached-1.0.16.tar.gz
-tar -xvzf libmemcached-1.0.16.tar.gz
-cd libmemcached-1.0.16
+wget https://launchpad.net/libmemcached/1.0/1.0.18/+download/libmemcached-1.0.18.tar.gz
+tar -xvzf libmemcached-1.0.18.tar.gz
+cd libmemcached-1.0.18
 ```
 
 unfortunately on modern fedora, we need to make a few patches
@@ -74,6 +74,10 @@ extern ms_stats_t ms_stats;
 /* global statistic structure */
 extern ms_statistic_t ms_statistic;
 ```
+
+// Install dependents for memaslap
+Ubuntu/Debian: $ sudo apt install libevent-dev gcc g++
+RHEL/Fedora/CentOS: $ sudo dnf install libevent-devel gcc g++
 
 now you can build memaslap
 

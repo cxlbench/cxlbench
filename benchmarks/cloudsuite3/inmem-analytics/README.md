@@ -63,9 +63,9 @@ In one terminal:
 2. you'll now be in a copy of the docker container at the bash prompt
 3. apt update
 4. apt install vim numactl
-5. vim /benchmarks/run\_benchmark.sh
-6. change "exec ${SPARK\_HOME}" to "exec numactl --interleave=0,2 ${SPARK\_HOME}"
-7. save and close the document.  do not exit the container yet.
+6. vim /benchmarks/movielens-als/run\_benchmark.sh
+7. change "exec ${SPARK\_HOME}" to "exec numactl --interleave=0,2 ${SPARK\_HOME}"
+8. save and close the document.  do not exit the container yet.
 
 In another terminal:
 1. docker container list

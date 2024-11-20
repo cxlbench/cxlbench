@@ -63,8 +63,8 @@ The `utils` directory has some useful scripts to help process the results faster
 
 ```bash
 // Install Python3 and PIP
-Ubuntu/Debian: $ sudo apt install pythong3 pip
-RHEL/Fedora/CentOS: $ sudo dnf install pythong3 pip
+Ubuntu/Debian: $ sudo apt install python3 pip
+RHEL/Fedora/CentOS: $ sudo dnf install python3 pip
 
 // Install the requirements for the parsing scripts
 $ pip install -r requirements.txt
