@@ -1,41 +1,8 @@
 # Container setup
 
-pull down and run the latest container
-```
-docker pull redis:latest
-docker run -it --entrypoint="/bin/bash" redis
-```
+## Setup
 
-in the container
-```
-apt update
-apt install vim numactl redis-server
-cd /root/
-```
-
-in the root directory add the following files:
-
-entrypoint.sh
-```
-numactl $1 redis-server /root/redis.conf --port 7551
-```
-
-redis.conf
-(included in this directory)
-this config does three things
-- Binds to port 7551
-- Sets IP binding to 0.0.0.0 (accepts from anywhere)
-- turns protected mode off (otherwise connections will fail)
-- turns snapshotting off (for consistency of performance)
-
-
-
-In a separate console, commit the container
-
-```
-docker container ps
-docker container commit [container-id] redis-numa
-```
+Use the tools/docker_prep [README](../../../tools/docker_prep/README) to stage the docekr iamge used in this benchmark test.
 
 # Running the benchmark
 
@@ -52,7 +19,7 @@ Options:
   -p             : Set in-container numactl mempolicy
   -c  <integer>  : CPU NUMA node to bind to
   -m  <int,...>  : Memory NUMA nodes to allow
-  -w  <string>   : Container name. Default: redis-numa
+  -w  <string>   : Container name. Default: cxlbench-redis
   -d  <integer>  : Set the data size
   -q  <integer>  : Set the number of threads
   -o  <string>   : Output file to concatenate results to

@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
-f = open("results.txt","r");
-lines = f.readlines();
+f = open("results.txt","r")
+lines = f.readlines()
 f.close()
 
 header = ""
