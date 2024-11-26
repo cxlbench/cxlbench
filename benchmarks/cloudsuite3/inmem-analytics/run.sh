@@ -1,4 +1,7 @@
 #!/bin/bash
+
+set -e
+
 if [[ -f ./setup_env.sh ]]; then
 	source ./setup_env.sh
 fi

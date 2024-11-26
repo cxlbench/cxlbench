@@ -1,4 +1,7 @@
 #!/bin/bash
+
+set -e
+
 if [[ -f ./setup_env.sh ]]; then
 	source ./setup_env.sh
 fi
@@ -134,7 +137,6 @@ mkdir -p results
 
 docker create --name graph-data cloudsuite3/twitter-dataset-graph
 
-echo "Test: docker run $PRIVILEGED $MAXMEM $MAXSWAP --ulimit nofile=90000:90000 $CPUSETS_CPU $CPUSETS_MEM --rm --volumes-from graph-data $CONTAINER $DMEM $EMEM"
 start_time=$(date +%s%N)
 docker run $PRIVILEGED $MAXMEM $MAXSWAP --ulimit nofile=90000:90000 $CPUSETS_CPU $CPUSETS_MEM --rm --volumes-from graph-data $CONTAINER $DMEM $EMEM > results/raw_results.txt
 end_time=$(date +%s%N)
