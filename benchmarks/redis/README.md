@@ -2,7 +2,7 @@
 
 ## Setup
 
-Use the tools/docker_prep [README](/tools/docker_prep/README) to stage the docekr image used in this benchmark test.
+Use the tools/docker_prep [README](/tools/docker_prep/README) to stage the docker image used in this benchmark test.
 
 # Running the benchmark
 
