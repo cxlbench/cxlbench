@@ -1,0 +1,35 @@
+name: cxlbench
+
+services:
+  mlc:
+    build:
+      context: ../../
+      dockerfile: ./tools/docker_prep/Dockerfile.mlc
+  graph-analytics:
+    build:
+      context: .
+      dockerfile: Dockerfile.graph
+  ima:
+    build:
+      context: .
+      dockerfile: Dockerfile.ima
+  memcached:
+    build:
+      context: .
+      dockerfile: Dockerfile.memcached
+  memaslap:
+    build:
+      context: .
+      dockerfile: Dockerfile.memaslap
+  qdrant:
+    build:
+      context: .
+      dockerfile: Dockerfile.qdrant
+  redis:
+    build:
+      context: ../../
+      dockerfile: ./tools/docker_prep/Dockerfile.redis
+  stream:
+    build:
+      context: ../../
+      dockerfile: ./tools/docker_prep/Dockerfile.stream

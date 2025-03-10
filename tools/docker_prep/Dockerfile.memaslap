@@ -1,0 +1,48 @@
+FROM ubuntu:24.04
+
+## install build tool
+RUN apt update && apt install -y wget libevent-dev gcc g++ git make autoconf libtool
+
+## get the source code
+RUN wget https://launchpad.net/libmemcached/1.0/1.0.18/+download/libmemcached-1.0.18.tar.gz
+RUN tar -xvzf libmemcached-1.0.18.tar.gz -C /
+WORKDIR /libmemcached-1.0.18
+
+## patch a few locations
+RUN sed -i "s/opt_servers == false/\!opt_servers/g" clients/memflush.cc
+RUN sed -i '48 i /* global structure */\
+ms_global_t ms_global;\
+\
+/* global stats information structure */\
+ms_stats_t ms_stats;\
+\
+/* global statistic structure */\
+ms_statistic_t ms_statistic;\
+' clients/memaslap.c
+RUN sed -i "s/ms_global_t ms_global/extern ms_global_t ms_global/" clients/ms_memslap.h
+RUN sed -i "s/ms_stats_t ms_stats/extern ms_stats_t ms_stats/" clients/ms_memslap.h
+RUN sed -i "s/ms_statistic_t ms_statistic/extern ms_statistic_t ms_statistic/" clients/ms_memslap.h
+
+## make memaslap
+RUN ./configure --enable-memaslap
+RUN make
+
+
+## build latest numactl
+RUN git clone --depth=1 https://github.com/numactl/numactl /numactl
+WORKDIR /numactl
+RUN ./autogen.sh
+RUN ./configure --enable-static
+RUN make
+RUN make install
+RUN cp ./.libs/libnuma.so.1 /lib/x86_64-linux-gnu/
+
+
+# Build a shell script because the ENTRYPOINT cannot use ENV and CMD at the same time
+# numactl --cpunodebind 1 ./libmemcached-1.0.18/clients/memaslap -s 127.0.0.1:11211 -T 16 -c 256 -t 180s -X 131072 > results/raw_results.txt
+ENV entryscript='#!/bin/bash \n numactl ${NUMA_ARG} /libmemcached-1.0.18/clients/memaslap "$@"'
+RUN echo "$entryscript" > ./entrypoint.sh
+RUN chmod +x ./entrypoint.sh
+
+# Run the generated shell script.
+ENTRYPOINT ["./entrypoint.sh"]

@@ -1,0 +1,25 @@
+FROM redis:latest
+
+COPY ../../benchmarks/redis/redis.conf /root/redis.conf
+
+## install build tool
+RUN apt update && apt install -y git make autoconf libtool redis-server
+
+## build latest numactl
+RUN git clone --depth=1 https://github.com/numactl/numactl /numactl
+WORKDIR /numactl
+RUN ./autogen.sh
+RUN ./configure --enable-static
+RUN make
+RUN make install
+RUN cp ./.libs/libnuma.so.1 /lib/x86_64-linux-gnu/
+
+
+# Build a shell script because the ENTRYPOINT cannot use ENV and CMD at the same time
+WORKDIR /root
+ENV entryscript='#!/bin/bash \n numactl ${NUMA_ARG} redis-server /root/redis.conf --port 7551 "$@" \n sleep infinity'
+RUN echo "$entryscript" > ./entrypoint.sh
+RUN chmod +x ./entrypoint.sh
+
+# Run the generated shell script.
+ENTRYPOINT ["./entrypoint.sh"]

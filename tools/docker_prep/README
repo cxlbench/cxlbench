@@ -1,0 +1,32 @@
+# ABOUT
+
+This tool is to pull and build all the docker images used in the cxlbench.  
+Each image will build the numactl from its github source to support weighted interleave.  
+
+## BUILD_ALL
+
+```bash
+docker compose build -f compose.yaml
+```
+
+## Build Individual Image
+
+```bash
+docker build -f Dockerfile.mlc -t cxlbench-mlc ../../
+docker build -f Dockerfile.graph -t  cxlbench-graph-analytics .
+docker build -f Dockerfile.ima -t cxlbench-ima .
+docker build -f Dockerfile.memcached -t cxlbench-memcached .
+docker build -f Dockerfile.memaslap -t cxlbench-memaslap .
+docker build -f Dockerfile.qdrant -t cxlbench-qdrant .
+docker build -f Dockerfile.redis -t cxlbench-redis ../../
+docker build -f Dockerfile.stream -t cxlbench-stream ../../
+```
+
+## Usage
+
+Numactl parameter is passed in via environment variable NUMA_ARG, and test argument is passed in after the image.  
+For example, run mlc with numactl option "--membind=0" and mlc argument "--max_bandwidth":
+
+```bash
+docker run --privileged --env NUMA_ARG="--membind=0" cxlbench.mlc --max_bandwidth
+```

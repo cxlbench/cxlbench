@@ -18,7 +18,11 @@ This benchmark allows users to configure various parameters such as the number o
    git clone https://github.com/your-username/qdrant-benchmark.git
    cd qdrant-benchmark
    ```
-3. Run the benchmark using the provided script.
+3.  Install python modules:
+   ```bash
+   pip3 install qdrant_client tqdm
+   ```
+4. Run the benchmark using the provided script.
 
 ## Usage
 

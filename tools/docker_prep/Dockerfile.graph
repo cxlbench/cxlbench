@@ -1,0 +1,19 @@
+FROM cloudsuite/graph-analytics
+
+## install build tool
+RUN apt update || true
+RUN apt install -y git make autoconf libtool
+
+## build latest numactl
+RUN git clone --depth=1 https://github.com/numactl/numactl /numactl
+WORKDIR /numactl
+RUN ./autogen.sh
+RUN ./configure
+RUN make
+RUN make install
+RUN cp ./.libs/libnuma.so.1 /lib/x86_64-linux-gnu/
+
+
+## insert numactl into entrypoint
+WORKDIR /
+RUN sed -i 's/${SPARK_HOME}/numactl ${NUMA_ARG} ${SPARK_HOME}/' /root/run_benchmark.sh
